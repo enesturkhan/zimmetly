@@ -5,15 +5,44 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-model TestUser {
-  id    String @id @default(uuid())
-  email String @unique
+
+model User {
+  id         String     @id       // Supabase Auth user ID
+  email      String     @unique
+  fullName   String
+  department String
+  role       String     @default("user") // admin | user
+  createdAt  DateTime   @default(now())
+
+  transactionsFrom Transaction[] @relation("FromUser")
+  transactionsTo   Transaction[] @relation("ToUser")
+}
+
+model Document {
+  id          String        @id @default(uuid())
+  number      String        @unique
+  createdAt   DateTime      @default(now())
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String      @id @default(uuid())
+  documentId  String
+  fromUserId  String
+  toUserId    String
+  status      String
+  createdAt   DateTime    @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  fromUser User     @relation("FromUser", fields: [fromUserId], references: [id])
+  toUser   User     @relation("ToUser", fields: [toUserId], references: [id])
 }

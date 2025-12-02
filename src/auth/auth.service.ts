@@ -4,11 +4,18 @@ import { supabaseAdmin } from '../supabase/supabase.client';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
 
+// DTO'dan gelen değerleri kullanırken Rol Enum'unu almalıyız
+// Eğer DTO'da tanımlamadıysan, buraya ekle:
+enum Role {
+  USER = 'USER',
+  ADMIN = 'ADMIN',
+}
+
 @Injectable()
 export class AuthService {
   constructor(private prisma: PrismaService) {}
 
-  // LOGIN
+  // LOGIN metodu
   async login(dto: LoginDto) {
     const { email, password } = dto;
 
@@ -25,6 +32,10 @@ export class AuthService {
       where: { id: data.user.id },
     });
 
+    // Prisma kaydı kontrolü
+    if (!user)
+      throw new BadRequestException('Prisma kaydı eksik veya bulunamadı.');
+
     return {
       message: 'Giriş başarılı',
       session: data.session,
@@ -34,7 +45,8 @@ export class AuthService {
 
   // ADMIN → USER CREATE
   async createUser(dto: CreateUserDto) {
-    const { email, password, fullName, department } = dto;
+    // DTO'dan gelen role değeri (ADMIN veya USER) kullanılacak
+    const { email, password, fullName, department, role } = dto;
 
     // 1) Email zaten var mı kontrol et
     const exists = await this.prisma.user.findUnique({
@@ -62,8 +74,11 @@ export class AuthService {
         id: authId,
         email,
         fullName,
-        department,
-        role: 'user',
+        // Department alanı isteğe bağlı (optional) olduğu için,
+        // gönderilmezse 'undefined' gelir. Prisma 'undefined' değil 'null' ister.
+        department: department || null,
+        // DTO'dan gelen rolü kullan. DTO'da varsayılan olarak USER ayarlanmıştı.
+        role: role as Role,
       },
     });
 

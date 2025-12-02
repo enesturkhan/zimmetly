@@ -1,4 +1,10 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsEnum } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsOptional,
+  IsEnum,
+} from 'class-validator';
 
 // Prisma'dan veya ayrı bir yerden Role Enum'unu import etmelisin
 enum Role {
@@ -17,11 +23,11 @@ export class CreateUserDto {
   @IsString()
   fullName: string;
 
-  @IsString()
-  department: string;
+  @IsOptional() // Alanın gönderilmesi zorunlu DEĞİL
+  @IsString() // Eğer gönderilirse, string olmak ZORUNDA
+  department?: string; // TypeScript'te de opsiyonel (?) yaptık
 
-  // ÇÖZÜM BURADA: Bu alanı Postman'de gönderebilirsin
-  @IsOptional() 
+  @IsOptional()
   @IsEnum(Role) // Sadece 'USER' veya 'ADMIN' değerlerini kabul etsin
   role?: Role = Role.USER; // Varsayılan değer olarak USER atıyoruz
 }

@@ -1,7 +1,9 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { SupabaseAuthGuard } from './guards/supabase.guard';
+import { AdminGuard } from './guards/admin.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -13,6 +15,7 @@ export class AuthController {
   }
 
   @Post('create-user')
+  @UseGuards(SupabaseAuthGuard, AdminGuard)
   createUser(@Body() dto: CreateUserDto) {
     return this.authService.createUser(dto);
   }

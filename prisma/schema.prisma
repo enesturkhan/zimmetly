@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,12 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id         String   @id // Supabase Auth user ID
   email      String   @unique
   fullName   String
   department String?
-  role       String   @default("user") // admin | user
+  role       Role     @default(USER)
   createdAt  DateTime @default(now())
 
   transactionsFrom Transaction[] @relation("FromUser")
@@ -41,7 +40,6 @@ model Transaction {
   createdAt  DateTime @default(now())
 
   document Document @relation(fields: [documentId], references: [id])
-
-  fromUser User @relation("FromUser", fields: [fromUserId], references: [id])
-  toUser   User @relation("ToUser", fields: [toUserId], references: [id])
+  fromUser User     @relation("FromUser", fields: [fromUserId], references: [id])
+  toUser   User     @relation("ToUser", fields: [toUserId], references: [id])
 }

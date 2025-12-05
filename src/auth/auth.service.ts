@@ -3,13 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { supabaseAdmin } from '../supabase/supabase.client';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
-
-// DTO'dan gelen değerleri kullanırken Rol Enum'unu almalıyız
-// Eğer DTO'da tanımlamadıysan, buraya ekle:
-enum Role {
-  USER = 'USER',
-  ADMIN = 'ADMIN',
-}
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -75,10 +69,10 @@ export class AuthService {
         email,
         fullName,
         // Department alanı isteğe bağlı (optional) olduğu için,
-        // gönderilmezse 'undefined' gelir. Prisma 'undefined' değil 'null' ister.
-        department: department || null,
+        // undefined ise hiç gönderme, null veya string ise gönder
+        ...(department !== undefined && { department }),
         // DTO'dan gelen rolü kullan. DTO'da varsayılan olarak USER ayarlanmıştı.
-        role: role as Role,
+        role: role || Role.USER,
       },
     });
 

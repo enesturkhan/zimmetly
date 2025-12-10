@@ -4,7 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { supabaseAdmin } from '../../supabase/supabase.client';
+import { supabase } from '../../supabase/supabase.client';
 
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
@@ -16,13 +16,13 @@ export class SupabaseAuthGuard implements CanActivate {
 
     const token = auth.replace('Bearer ', '');
 
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    const { data, error } = await supabase.auth.getUser(token);
 
     if (error || !data.user) {
       throw new UnauthorizedException('Geçersiz token');
     }
 
-    req.user = data.user; // Supabase user
+    req.user = data.user;
 
     return true;
   }

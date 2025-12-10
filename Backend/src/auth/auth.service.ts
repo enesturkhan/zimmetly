@@ -18,8 +18,8 @@ export class AuthService {
       password,
     });
 
-    if (error) throw new BadRequestException(error.message);
-    if (!data?.user) throw new BadRequestException('Kullanıcı bulunamadı');
+    if (error) throw new BadRequestException('Email veya şifre hatalı!');
+    if (!data?.user) throw new BadRequestException('Kullanıcı Bulunamadı!');
 
     // kullanıcı profili Prisma'dan çekilir
     const user = await this.prisma.user.findUnique({

@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [zimmetError, setZimmetError] = useState("");
   const [zimmetMessage, setZimmetMessage] = useState("");
   const [isZimmetLoading, setIsZimmetLoading] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // ---- USER DROPDOWN ----
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -120,9 +121,21 @@ export default function DashboardPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ---- BAŞARI MESAJI OTOMATİK KAYBOLMA ----
+  useEffect(() => {
+    if (showSuccessMessage) {
+      const timer = setTimeout(() => {
+        setShowSuccessMessage(false);
+        setZimmetMessage("");
+      }, 3000); // 3sn sonra kaybol
+
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessMessage]);
+
   // ---- USER FİLTRE (ARAMA) ----
   const filteredUsers = users
-    .filter((u) => u.id !== user?.id) // 👈 Login kullanıcıyı listeden kaldır
+    .filter((u) => u.id !== user?.id) // Login kullanıcıyı listeden çıkar
     .filter((u) => {
       const q = zimmetUserSearch.toLowerCase();
       return (
@@ -144,7 +157,7 @@ export default function DashboardPage() {
     }
 
     if (!/^[0-9]+$/.test(trimmed)) {
-      setErrorMsg("Sadece rakam giriniz.");
+      setErrorMsg("Sadece numara giriniz.");
       return;
     }
 
@@ -164,14 +177,14 @@ export default function DashboardPage() {
 
       if (!res.ok) {
         setErrorMsg(data.message || "Evrak bulunamadı.");
-        setZimmetNumber(trimmed);
-        setDocNumber("");
+        setZimmetNumber(trimmed); // kaydı olmayan evrak → zimmet numarasına otomatik yaz
+        setDocNumber(""); // arama inputunu temizle
         return;
       }
 
       setDocResult(data);
-      setZimmetNumber(data.number);
-      setDocNumber(""); // Arama inputunu temizle
+      setZimmetNumber(data.number); // bulunan evrak → zimmet numarasına yaz
+      setDocNumber(""); // arama inputunu temizle
     } catch {
       setErrorMsg("Bir hata oluştu.");
     } finally {
@@ -186,45 +199,15 @@ export default function DashboardPage() {
     }
   };
 
-  // ---- USER DROPDOWN KLAVYE NAVİGASYONU ----
-  const handleUserDropdownKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (!isUserDropdownOpen) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightIndex((prev) =>
-        prev + 1 < filteredUsers.length ? prev + 1 : prev
-      );
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev - 1 >= 0 ? prev - 1 : 0));
-    }
-
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const selected = filteredUsers[highlightIndex];
-      if (selected) {
-        setZimmetUserId(selected.id);
-        setZimmetUserSearch(
-          `${selected.fullName} — ${selected.department ?? ""}`
-        );
-      }
-      setIsUserDropdownOpen(false);
-    }
-
-    if (e.key === "Escape") {
-      setIsUserDropdownOpen(false);
-    }
-  };
-
   // ---- ZİMMETLEME ----
-  const handleZimmet = async () => {
+  const handleZimmet = async (overrideUserId?: string) => {
     setZimmetError("");
     setZimmetMessage("");
+    setShowSuccessMessage(false);
 
-    if (!zimmetNumber || !zimmetUserId) {
+    const finalUserId = overrideUserId || zimmetUserId;
+
+    if (!zimmetNumber || !finalUserId) {
       setZimmetError("Tüm zimmet bilgilerini doldurun.");
       return;
     }
@@ -244,7 +227,7 @@ export default function DashboardPage() {
           },
           body: JSON.stringify({
             documentNumber: zimmetNumber,
-            toUserId: zimmetUserId,
+            toUserId: finalUserId,
           }),
         }
       );
@@ -257,10 +240,58 @@ export default function DashboardPage() {
       }
 
       setZimmetMessage("Zimmet başarıyla oluşturuldu!");
+      setShowSuccessMessage(true);
       setZimmetUserId("");
       setZimmetUserSearch("");
+      setZimmetNumber("");
     } finally {
       setIsZimmetLoading(false);
+    }
+  };
+
+  // ---- USER DROPDOWN KLAVYE NAVİGASYONU + ENTER İLE ZİMMET ----
+  const handleUserInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setIsUserDropdownOpen(true);
+      setHighlightIndex((prev) =>
+        prev + 1 < filteredUsers.length ? prev + 1 : prev
+      );
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setIsUserDropdownOpen(true);
+      setHighlightIndex((prev) => (prev - 1 >= 0 ? prev - 1 : 0));
+      return;
+    }
+
+    if (e.key === "Escape") {
+      setIsUserDropdownOpen(false);
+      return;
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      // Eğer dropdown açıksa sadece seçimi yap (zimmetleme yapma)
+      if (isUserDropdownOpen && filteredUsers.length > 0) {
+        const selected = filteredUsers[highlightIndex];
+        if (selected) {
+          setZimmetUserId(selected.id);
+          setZimmetUserSearch(
+            `${selected.fullName} — ${selected.department ?? ""}`
+          );
+          setIsUserDropdownOpen(false);
+        }
+        return; // İlk Enter'da sadece seçim yap, zimmetleme yapma
+      }
+
+      // Dropdown kapalıysa, zimmet bilgileri dolu ise ENTER → zimmetle (2. Enter)
+      if (zimmetNumber && zimmetUserId) {
+        handleZimmet();
+      }
     }
   };
 
@@ -293,13 +324,21 @@ export default function DashboardPage() {
 
       {/* ÜST MENÜ */}
       <div className="flex gap-3">
-        <Button onClick={() => router.push("/zimmet")}>Zimmet Yap (Detaylı)</Button>
-        <Button onClick={() => router.push("/gecmisim")}>Benim Geçmişim</Button>
+        <Button onClick={() => router.push("/zimmet")}>
+          Zimmet Yap (Detaylı)
+        </Button>
+        <Button onClick={() => router.push("/gecmisim")}>
+          Benim Geçmişim
+        </Button>
 
         {user.role === "ADMIN" && (
           <>
-            <Button onClick={() => router.push("/admin/users")}>Kullanıcı Yönetimi</Button>
-            <Button onClick={() => router.push("/admin/create-user")}>Yeni Kullanıcı</Button>
+            <Button onClick={() => router.push("/admin/users")}>
+              Kullanıcı Yönetimi
+            </Button>
+            <Button onClick={() => router.push("/admin/create-user")}>
+              Yeni Kullanıcı
+            </Button>
           </>
         )}
       </div>
@@ -315,7 +354,11 @@ export default function DashboardPage() {
               placeholder="Evrak numarası girin"
               value={docNumber}
               onKeyDown={handleKeyDownSearch}
-              onChange={(e) => setDocNumber(e.target.value)}
+              onChange={(e) => {
+                // Sadece rakamları kabul et
+                const value = e.target.value.replace(/[^0-9]/g, "");
+                setDocNumber(value);
+              }}
             />
             <Button onClick={runSearch} disabled={isLoading}>
               {isLoading ? "Aranıyor..." : "Ara"}
@@ -330,7 +373,9 @@ export default function DashboardPage() {
 
           {docResult && (
             <div className="border rounded-md p-4">
-              <p><b>Evrak No:</b> {docResult.number}</p>
+              <p>
+                <b>Evrak No:</b> {docResult.number}
+              </p>
               <p className="text-sm text-gray-500 mt-1">
                 Zimmet geçmişi henüz bu ekrana bağlı değil.
               </p>
@@ -345,12 +390,24 @@ export default function DashboardPage() {
           <CardTitle>Hızlı Zimmet</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-
           {/* Evrak numarası */}
           <Input
             placeholder="Evrak numarası"
             value={zimmetNumber}
-            onChange={(e) => setZimmetNumber(e.target.value)}
+            onChange={(e) => {
+              // Sadece rakamları kabul et
+              const value = e.target.value.replace(/[^0-9]/g, "");
+              setZimmetNumber(value);
+            }}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                // Eğer hem evrak numarası hem de kullanıcı seçili ise zimmetle
+                if (zimmetNumber && zimmetUserId) {
+                  handleZimmet();
+                }
+              }
+            }}
           />
 
           {/* Kullanıcı arama + dropdown */}
@@ -364,10 +421,7 @@ export default function DashboardPage() {
                 setHighlightIndex(0);
               }}
               onFocus={() => setIsUserDropdownOpen(true)}
-              onKeyDown={(e) => {
-                setIsUserDropdownOpen(true);   // 👈 ÖNEMLİ! Dropdown açık değilse key event çalışmaz.
-                handleUserDropdownKey(e);
-              }}
+              onKeyDown={handleUserInputKeyDown}
             />
 
             {isUserDropdownOpen && filteredUsers.length > 0 && (
@@ -401,7 +455,7 @@ export default function DashboardPage() {
 
           {/* ZİMMETLE BUTTON */}
           <Button
-            onClick={handleZimmet}
+            onClick={() => handleZimmet()}
             disabled={isZimmetLoading}
             className="w-full"
           >
@@ -413,14 +467,36 @@ export default function DashboardPage() {
               <AlertDescription>{zimmetError}</AlertDescription>
             </Alert>
           )}
-
-          {zimmetMessage && (
-            <Alert>
-              <AlertDescription>{zimmetMessage}</AlertDescription>
-            </Alert>
-          )}
         </CardContent>
       </Card>
+
+      {/* --- BAŞARI MESAJI: ZİMMET BUTONUNUN ALTINDA, KARTIN DIŞINDA --- */}
+      <div
+        className={`overflow-hidden transition-all duration-300 ${
+          showSuccessMessage ? "max-h-20 opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
+        }`}
+      >
+        {zimmetMessage && (
+          <Alert className="bg-green-50 border-green-200 text-green-800">
+            <AlertDescription className="flex items-center gap-2">
+              <svg
+                className="h-5 w-5 text-green-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              {zimmetMessage}
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
     </div>
   );
 }

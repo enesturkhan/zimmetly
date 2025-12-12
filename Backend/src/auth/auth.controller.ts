@@ -5,6 +5,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { SupabaseAuthGuard } from './guards/supabase.guard';
 import { AdminGuard } from './guards/admin.guard';
 import { UserService } from '../user/user.service';
+import { Patch, Param } from '@nestjs/common';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -30,4 +32,13 @@ export class AuthController {
     const supabaseUser = req.user; // token'dan geldi
     return await this.userService.findById(supabaseUser.id);
   }
+
+
+
+@Patch('update-user/:id')
+@UseGuards(SupabaseAuthGuard, AdminGuard)
+updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+  return this.authService.updateUser(id, dto);
+}
+
 }

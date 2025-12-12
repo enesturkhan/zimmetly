@@ -19,6 +19,7 @@ model User {
   department String?
   role       Role     @default(USER)
   createdAt  DateTime @default(now())
+  isActive    Boolean  @default(true)
 
   transactionsFrom Transaction[] @relation("FromUser")
   transactionsTo   Transaction[] @relation("ToUser")

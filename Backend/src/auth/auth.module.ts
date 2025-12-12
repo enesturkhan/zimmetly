@@ -8,5 +8,6 @@ import { UserModule } from '../user/user.module';
   imports: [PrismaModule, UserModule],
   controllers: [AuthController],
   providers: [AuthService],
+  exports: [AuthService], // UserModule'de kullanılabilmesi için export ediyoruz
 })
 export class AuthModule {}

@@ -113,7 +113,7 @@ export class AuthService {
         );
       }
     }
-
+  
     // 3) Eğer email güncellenecekse → Supabase AUTH üzerinde email'i güncelle
     if (dto.email && dto.email !== existing.email) {
       const { error } = await supabaseAdmin.auth.admin.updateUserById(id, {

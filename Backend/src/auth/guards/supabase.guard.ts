@@ -4,25 +4,45 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { supabase } from '../../supabase/supabase.client';
+import { supabaseAdmin } from '../../supabase/supabase.client';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
-  async canActivate(context: ExecutionContext) {
+  constructor(private prisma: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
     const auth = req.headers.authorization;
 
-    if (!auth) throw new UnauthorizedException('Token bulunamadı');
+    if (!auth) {
+      throw new UnauthorizedException('Token bulunamadı');
+    }
 
     const token = auth.replace('Bearer ', '');
 
-    const { data, error } = await supabase.auth.getUser(token);
+    // 1️⃣ Supabase token doğrulama
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
 
     if (error || !data.user) {
       throw new UnauthorizedException('Geçersiz token');
     }
 
-    req.user = data.user;
+    // 2️⃣ Prisma kullanıcı kontrolü
+    const user = await this.prisma.user.findUnique({
+      where: { id: data.user.id },
+    });
+
+     if (!user || !user.isActive) {
+       throw new UnauthorizedException('Kullanıcı pasif');
+     }
+    
+
+    // 3️⃣ request içine kullanıcıyı ekle
+    req.user = {
+      id: user.id,
+      role: user.role,
+    };
 
     return true;
   }

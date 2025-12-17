@@ -18,18 +18,28 @@ export class UserService {
     email: true,
     department: true,
     role: true,
+    isActive: true,
     createdAt: true,
   };
 
   /**
-   * 1) Tüm kullanıcıları listeleme
+   * 1) Tüm kullanıcıları listeleme (sadece aktif olanlar)
    */
   async findAll() {
     return this.prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
-      select: this.userSelectFields,
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        department: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
     });
   }
+  
 
   /**
    * 2) ID ile kullanıcı getirme
@@ -116,26 +126,105 @@ export class UserService {
   }
 
   /**
-   * 4) Kullanıcı silme (Supabase + Prisma)
+   * 4) Kullanıcı silme (Soft Delete - Pasif yapma)
    */
   async delete(id: string) {
     // Kullanıcı var mı kontrol
     await this.findById(id);
 
-    // SUPABASE AUTH'TAN SİL
+    // Supabase Auth'tan sil
     const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
-
     if (error) {
       throw new BadRequestException(
         'Supabase Auth silme hatası: ' + error.message,
       );
     }
 
-    // PRISMA DB'DEN SİL
-    await this.prisma.user.delete({
+    // Prisma'da PASİF yap (soft delete)
+    await this.prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    return {
+      message: 'Kullanıcı pasif hale getirildi',
+      userId: id,
+    };
+  }
+
+  /**
+   * 5) Zimmet atanabilir kullanıcıları getir (aktif olanlar, kendisi hariç)
+   */
+  async findAssignableUsers(currentUserId: string) {
+    return this.prisma.user.findMany({
+      where: {
+        id: {
+          not: currentUserId, // 👈 kendisi hariç
+        },
+        isActive: true, // 👈 sadece aktif kullanıcılar
+      },
+      select: {
+        id: true,
+        fullName: true,
+        department: true,
+      },
+      orderBy: {
+        fullName: 'asc',
+      },
+    });
+  }
+
+  /**
+   * 6) Kullanıcı durum güncelleme (Aktif/Pasif)
+   */
+  async updateStatus(id: string, isActive: boolean) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+
+    if (!user) {
+      throw new NotFoundException('Kullanıcı bulunamadı');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        isActive: true,
+        role: true,
+      },
+    });
+  }
+
+  /**
+   * 7) Kullanıcı aktif / pasif durumunu değiştir
+   */
+  async toggleActive(id: string, isActive: boolean) {
+    const user = await this.prisma.user.findUnique({
       where: { id },
     });
 
-    return { message: 'Kullanıcı başarıyla silindi', deletedId: id };
+    if (!user) {
+      throw new NotFoundException('Kullanıcı bulunamadı');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { isActive },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        department: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    return {
+      message: isActive ? 'Kullanıcı aktif edildi' : 'Kullanıcı pasif edildi',
+      data: updated,
+    };
   }
 }

@@ -92,7 +92,7 @@ export default function DashboardPage() {
     if (!token) return;
 
     async function fetchUsers() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/assignable`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -134,15 +134,15 @@ export default function DashboardPage() {
   }, [showSuccessMessage]);
 
   // ---- USER FİLTRE (ARAMA) ----
-  const filteredUsers = users
-    .filter((u) => u.id !== user?.id) // Login kullanıcıyı listeden çıkar
-    .filter((u) => {
-      const q = zimmetUserSearch.toLowerCase();
-      return (
-        u.fullName.toLowerCase().includes(q) ||
-        (u.department || "").toLowerCase().includes(q)
-      );
-    });
+  // Backend zaten kendisini hariç tutuyor ve sadece aktif kullanıcıları getiriyor
+  // Bu yüzden burada sadece arama filtresi yapıyoruz
+  const filteredUsers = users.filter((u) => {
+    const q = zimmetUserSearch.toLowerCase();
+    return (
+      u.fullName.toLowerCase().includes(q) ||
+      (u.department || "").toLowerCase().includes(q)
+    );
+  });
 
   // ---- EVRAK ARAMA ----
   const runSearch = async () => {

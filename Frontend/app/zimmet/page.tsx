@@ -36,7 +36,17 @@ export default function ZimmetDetailPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(false);
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // ---- AUTH GUARD ----
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [getToken, router]);
 
   // ---- INPUT FOCUS ON LOAD ----
   useEffect(() => {
@@ -49,7 +59,7 @@ export default function ZimmetDetailPage() {
     if (!token) return;
 
     async function load() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/assignable`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -58,8 +68,31 @@ export default function ZimmetDetailPage() {
     load();
   }, [getToken]);
 
+  // ---- FETCH CURRENT USER (SELF) ----
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+
+    async function loadMe() {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok && data?.id) {
+          setCurrentUserId(data.id);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    loadMe();
+  }, [getToken]);
+
   // ---- FILTER USERS ----
   const filteredUsers = users.filter((u) => {
+    if (currentUserId && u.id === currentUserId) return false; // kendine zimmet engeli
     const q = userSearch.toLowerCase();
     return (
       u.fullName.toLowerCase().includes(q) ||
@@ -151,10 +184,20 @@ export default function ZimmetDetailPage() {
       return;
     }
 
+    // Kendi kendine zimmet engeli
+    if (currentUserId && finalUserId === currentUserId) {
+      setErrorMsg("Kendinize zimmet oluşturamazsınız.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const token = getToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
         method: "POST",

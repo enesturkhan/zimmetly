@@ -12,35 +12,52 @@ enum Role {
   ADMIN
 }
 
+enum TransactionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  RETURNED
+  CANCELLED
+}
+
 model User {
   id         String   @id // Supabase Auth user ID
-  email      String   @unique
   fullName   String
+  email      String   @unique
   department String?
   role       Role     @default(USER)
-  createdAt  DateTime @default(now())
   isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
-  transactionsFrom Transaction[] @relation("FromUser")
-  transactionsTo   Transaction[] @relation("ToUser")
+  sentTransactions     Transaction[] @relation("FromUser")
+  receivedTransactions Transaction[] @relation("ToUser")
+  holdingDocuments     Document[]    @relation("DocumentCurrentHolder")
 }
 
 model Document {
-  id           String        @id @default(uuid())
-  number       String        @unique
-  createdAt    DateTime      @default(now())
-  transactions Transaction[]
+  id        String   @id @default(uuid())
+  number    String   @unique
+  createdAt DateTime @default(now())
+
+  // Evrak şu an kimde? (kabul edilince güncellenecek)
+  currentHolderId String?
+  currentHolder   User?   @relation("DocumentCurrentHolder", fields: [currentHolderId], references: [id])
 }
 
 model Transaction {
-  id         String   @id @default(uuid())
-  documentId String
-  fromUserId String
-  toUserId   String
-  status     String
-  createdAt  DateTime @default(now())
+  id             String            @id @default(uuid())
+  documentNumber String
+  fromUserId     String
+  toUserId       String
+  status         TransactionStatus @default(PENDING)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  document Document @relation(fields: [documentId], references: [id])
-  fromUser User     @relation("FromUser", fields: [fromUserId], references: [id])
-  toUser   User     @relation("ToUser", fields: [toUserId], references: [id])
+  fromUser User @relation("FromUser", fields: [fromUserId], references: [id])
+  toUser   User @relation("ToUser", fields: [toUserId], references: [id])
+
+  @@index([documentNumber])
+  @@index([toUserId])
+  @@index([fromUserId])
+  @@index([status])
 }

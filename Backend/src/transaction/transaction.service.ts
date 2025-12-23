@@ -1,66 +1,161 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentService } from '../document/document.service';
-import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { TransactionStatus } from '@prisma/client';
 
 @Injectable()
 export class TransactionService {
-  constructor(
-    private prisma: PrismaService,
-    private documentService: DocumentService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  // Zimmet işlemi: evrak no + hedef kullanıcı, gönderen login kullanıcı
-  async create(dto: CreateTransactionDto, fromUserId: string) {
-    // 1) Evrakı bul ya da oluştur
-    const document = await this.documentService.findOrCreateByNumber(
-      dto.documentNumber,
-    );
+  async create(
+    dto: { documentNumber: string; toUserId: string },
+    fromUserId: string,
+  ) {
+    const docNo = dto.documentNumber.trim();
 
-    // 2) Transaction kaydı oluştur
-    const transaction = await this.prisma.transaction.create({
+    if (!/^[0-9]+$/.test(docNo)) {
+      throw new BadRequestException('Evrak numarası sadece rakam olmalı');
+    }
+
+    if (dto.toUserId === fromUserId) {
+      throw new BadRequestException('Kendinize zimmet gönderemezsiniz');
+    }
+
+    const toUser = await this.prisma.user.findUnique({
+      where: { id: dto.toUserId },
+    });
+    if (!toUser || !toUser.isActive)
+      throw new BadRequestException('Hedef kullanıcı aktif değil');
+
+    // Document'i varsa oluştur, yoksa zaten var (upsert)
+    await this.prisma.document.upsert({
+      where: { number: docNo },
+      update: {},
+      create: { number: docNo },
+    });
+
+    const tx = await this.prisma.transaction.create({
       data: {
-        documentId: document.id,
+        status: TransactionStatus.PENDING,
         fromUserId,
         toUserId: dto.toUserId,
-        status: 'PENDING', // Varsayılan durum
+        documentNumber: docNo,
       },
       include: {
-        document: true,
-        fromUser: true,
-        toUser: true,
+        toUser: { select: { id: true, fullName: true, department: true } },
+        fromUser: { select: { id: true, fullName: true, department: true } },
       },
     });
 
-    return {
-      message: 'Zimmet başarıyla oluşturuldu',
-      data: transaction,
-    };
+    return { message: 'Zimmet oluşturuldu', data: tx };
   }
 
-  // İleride kullanmak için: belirli evrağın tüm hareketleri
-  async historyByDocumentNumber(number: string) {
-    const document = await this.prisma.document.findUnique({
-      where: { number },
-    });
-
-    if (!document) return [];
-
-    return this.prisma.transaction.findMany({
-      where: { documentId: document.id },
-      include: { fromUser: true, toUser: true },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  // Kullanıcının yaptığı/aldığı zimmetler
-  async historyByUser(userId: string) {
+  async myList(userId: string) {
     return this.prisma.transaction.findMany({
       where: {
         OR: [{ fromUserId: userId }, { toUserId: userId }],
       },
-      include: { document: true, fromUser: true, toUser: true },
       orderBy: { createdAt: 'desc' },
+      include: {
+        fromUser: { select: { id: true, fullName: true, department: true } },
+        toUser: { select: { id: true, fullName: true, department: true } },
+      },
     });
+  }
+
+  async listByDocument(number: string) {
+    return this.prisma.transaction.findMany({
+      where: { documentNumber: number },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        fromUser: { select: { id: true, fullName: true, department: true } },
+        toUser: { select: { id: true, fullName: true, department: true } },
+      },
+    });
+  }
+
+  async accept(id: string, userId: string) {
+    const tx = await this.prisma.transaction.findUnique({
+      where: { id },
+    });
+    if (!tx) throw new NotFoundException('Zimmet bulunamadı');
+    if (tx.toUserId !== userId)
+      throw new ForbiddenException('Bu zimmeti sadece alıcı kabul edebilir');
+    if (tx.status !== TransactionStatus.PENDING)
+      throw new BadRequestException('Bu zimmet beklemede değil');
+
+    const updated = await this.prisma.transaction.update({
+      where: { id },
+      data: {
+        status: TransactionStatus.ACCEPTED,
+      },
+      include: {
+        fromUser: { select: { id: true, fullName: true } },
+        toUser: { select: { id: true, fullName: true } },
+      },
+    });
+
+    // Evrak artık alıcıda
+    await this.prisma.document.update({
+      where: { number: tx.documentNumber },
+      data: { currentHolderId: userId },
+    });
+
+    return { message: 'Zimmet kabul edildi', data: updated };
+  }
+
+  async cancel(id: string, userId: string) {
+    const tx = await this.prisma.transaction.findUnique({ where: { id } });
+    if (!tx) throw new NotFoundException('Zimmet bulunamadı');
+    if (tx.fromUserId !== userId)
+      throw new ForbiddenException('Bu zimmeti sadece gönderen geri çekebilir');
+    if (tx.status !== TransactionStatus.PENDING)
+      throw new BadRequestException('Kabul edilmiş zimmet geri çekilemez');
+
+    const updated = await this.prisma.transaction.update({
+      where: { id },
+      data: { status: TransactionStatus.CANCELLED },
+    });
+
+    return { message: 'Zimmet geri çekildi', data: updated };
+  }
+
+  async returnBack(id: string, userId: string) {
+    const tx = await this.prisma.transaction.findUnique({
+      where: { id },
+    });
+    if (!tx) throw new NotFoundException('Zimmet bulunamadı');
+    if (tx.toUserId !== userId)
+      throw new ForbiddenException('Sadece alıcı iade edebilir');
+    if (tx.status !== TransactionStatus.ACCEPTED)
+      throw new BadRequestException(
+        'Sadece kabul edilmiş zimmet iade edilebilir',
+      );
+
+    // 1) eskisini RETURNED yap
+    await this.prisma.transaction.update({
+      where: { id },
+      data: { status: TransactionStatus.RETURNED },
+    });
+
+    // 2) geri iade için yeni PENDING transaction aç (alıcı -> gönderen)
+    const backTx = await this.prisma.transaction.create({
+      data: {
+        status: TransactionStatus.PENDING,
+        fromUserId: tx.toUserId,
+        toUserId: tx.fromUserId,
+        documentNumber: tx.documentNumber,
+      },
+      include: {
+        fromUser: { select: { id: true, fullName: true } },
+        toUser: { select: { id: true, fullName: true } },
+      },
+    });
+
+    return { message: 'İade talebi oluşturuldu', data: backTx };
   }
 }

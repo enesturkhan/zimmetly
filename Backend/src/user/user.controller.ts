@@ -34,28 +34,28 @@ export class UserController {
   /**
    * 🔹 TÜM KULLANICILARI LİSTELE (ADMIN)
    */
-  @Get()
+    @Get()
   @UseGuards(SupabaseAuthGuard, AdminGuard)
-  findAll() {
-    return this.userService.findAll();
-  }
-
+    findAll() {
+      return this.userService.findAll();
+    }
+  
   /**
    * 🔹 KULLANICI GÜNCELLE (ADMIN)
    */
-  @Patch(':id')
+    @Patch(':id')
   @UseGuards(SupabaseAuthGuard, AdminGuard)
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.userService.update(id, dto);
-  }
-
+    update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+      return this.userService.update(id, dto);
+    }
+  
   /**
    * 🔹 KULLANICI SİL (ADMIN)
    */
-  @Delete(':id')
+    @Delete(':id')
   @UseGuards(SupabaseAuthGuard, AdminGuard)
-  delete(@Param('id') id: string) {
-    return this.userService.delete(id);
+    delete(@Param('id') id: string) {
+      return this.userService.delete(id);
   }
 
   /**

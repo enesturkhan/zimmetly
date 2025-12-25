@@ -1,10 +1,11 @@
-// src/transaction/dto/create-transaction.dto.ts
-import { IsString } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
 
 export class CreateTransactionDto {
   @IsString()
-  documentNumber: string; // Kullanıcının yazdığı evrak numarası
+  @IsNotEmpty()
+  documentNumber: string;
 
   @IsString()
-  toUserId: string; // Zimmetlenecek kişi
+  @IsNotEmpty()
+  toUserId: string;
 }

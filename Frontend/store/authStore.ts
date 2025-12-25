@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 // Auth state yapısı
-interface AuthState {
+export interface AuthState {
   token: string | null;
 
   // token kaydetme

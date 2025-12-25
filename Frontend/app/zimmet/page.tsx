@@ -40,14 +40,6 @@ export default function ZimmetDetailPage() {
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // ---- AUTH GUARD ----
-  useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace("/login");
-    }
-  }, [getToken, router]);
-
   // ---- INPUT FOCUS ON LOAD ----
   useEffect(() => {
     if (firstInputRef.current) firstInputRef.current.focus();
@@ -59,7 +51,7 @@ export default function ZimmetDetailPage() {
     if (!token) return;
 
     async function load() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/assignable`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -194,10 +186,6 @@ export default function ZimmetDetailPage() {
 
     try {
       const token = getToken();
-      if (!token) {
-        router.replace("/login");
-        return;
-      }
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
         method: "POST",

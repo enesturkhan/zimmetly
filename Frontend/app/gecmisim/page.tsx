@@ -124,7 +124,7 @@ export default function GecmisimPage() {
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  /* ---- Modal state ---- */
+  /* ---- Modal ---- */
   const [open, setOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<TxItem | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -158,10 +158,10 @@ export default function GecmisimPage() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Veri yüklenemedi");
+      if (!res.ok) throw new Error(data.message);
       setItems(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      setError(e.message || "Sunucuya bağlanılamadı");
+      setError(e.message || "Veri alınamadı");
     } finally {
       setLoading(false);
     }
@@ -171,7 +171,7 @@ export default function GecmisimPage() {
     if (me) fetchMine();
   }, [me]);
 
-  /* ================= ACTIONS ================= */
+  /* ================= ACTION ================= */
 
   const runAction = async (tx: TxItem, type: "accept" | "reject" | "return") => {
     setActionLoading(tx.id);
@@ -187,115 +187,45 @@ export default function GecmisimPage() {
         method: "PATCH",
         headers: { Authorization: `Bearer ${getToken()}` },
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "İşlem başarısız");
-        return;
-      }
-
+      if (!res.ok) throw new Error(data.message);
       await fetchMine();
-    } catch {
-      setError("Sunucuya bağlanılamadı");
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setActionLoading(null);
     }
   };
-
-  /* ================= ZİMMET MODAL ================= */
-
-  const openZimmetModal = async (tx: TxItem) => {
-    setSelectedTx(tx);
-    setOpen(true);
-    setUserSearch("");
-    setToUserId("");
-
-    try {
-      const res = await fetch(API.users(), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-      
-      // Kendine zimmet engeli: me.id'yi filtrele
-      const filtered = Array.isArray(data)
-        ? data.filter((u: UserOption) => u.id !== me?.id)
-        : [];
-      setUsers(filtered);
-    } catch {
-      setError("Kullanıcılar yüklenemedi");
-    }
-  };
-
-  const sendZimmet = async () => {
-    if (!selectedTx || !toUserId) {
-      setError("Lütfen kullanıcı seçin");
-      return;
-    }
-
-    // Kendine zimmet engeli (ekstra güvenlik)
-    if (me?.id && toUserId === me.id) {
-      setError("Kendinize zimmet oluşturamazsınız");
-      return;
-    }
-
-    setError("");
-    setActionLoading("zimmet");
-
-    try {
-      const res = await fetch(API.createTx(), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          documentNumber: selectedTx.documentNumber,
-          toUserId,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Zimmet oluşturulamadı");
-        return;
-      }
-
-      setOpen(false);
-      setToUserId("");
-      setSelectedTx(null);
-      setUserSearch("");
-      await fetchMine();
-    } catch {
-      setError("Sunucuya bağlanılamadı");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Filter users for search
-  const filteredUsers = useMemo(() => {
-    if (!userSearch) return users;
-    const q = userSearch.toLowerCase();
-    return users.filter(
-      (u) =>
-        u.fullName.toLowerCase().includes(q) ||
-        (u.department || "").toLowerCase().includes(q)
-    );
-  }, [users, userSearch]);
-
-  if (!me) return <div className="p-6">Yükleniyor...</div>;
 
   /* ================= UI ================= */
 
+  if (!me) return <div className="p-6">Yükleniyor...</div>;
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="flex justify-between">
-        <h2 className="text-xl font-semibold">Geçmişim</h2>
-        <Button variant="outline" onClick={() => router.push("/dashboard")}>
-          Dashboard
-        </Button>
+      {/* HEADER */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold">Geçmişim</h2>
+          <p className="text-sm text-muted-foreground">
+            {me.fullName}
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push("/dashboard")}>
+            Dashboard
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              logout();
+              router.push("/login");
+            }}
+          >
+            Çıkış Yap
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -305,20 +235,13 @@ export default function GecmisimPage() {
       )}
 
       {loading && (
-        <div className="flex items-center justify-center p-6">
+        <div className="flex justify-center p-6">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       )}
 
-      {!loading && items.length === 0 && (
-        <Card>
-          <CardContent className="p-6 text-center text-muted-foreground">
-            Henüz zimmet kaydı bulunmuyor.
-          </CardContent>
-        </Card>
-      )}
-
       {items.map((tx) => {
+        const isIncoming = tx.toUserId === me.id;
         const isPending = tx.status === "PENDING";
         const isAccepted = tx.status === "ACCEPTED";
         const isLoading = actionLoading === tx.id;
@@ -337,150 +260,54 @@ export default function GecmisimPage() {
                 {formatDateTR(tx.createdAt)}
               </div>
 
-              {(tx.fromUser || tx.fromUserId) && (
-                <div className="text-sm">
-                  <b>Kimden:</b> {tx.fromUser?.fullName || tx.fromUserId}
-                </div>
-              )}
-
-              {(tx.toUser || tx.toUserId) && (
-                <div className="text-sm">
-                  <b>Kime:</b> {tx.toUser?.fullName || tx.toUserId}
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                {isPending && (
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={() => runAction(tx, "accept")}
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Kabul"
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => runAction(tx, "reject")}
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Red"
-                      )}
-                    </Button>
-                  </>
-                )}
-
-                {isAccepted && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => runAction(tx, "return")}
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "İade Et"
-                      )}
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      onClick={() => openZimmetModal(tx)}
-                      disabled={isLoading}
-                    >
-                      Zimmet Yap
-                    </Button>
-                  </>
-                )}
+              <div className="text-sm">
+                <b>Kimden:</b> {tx.fromUser?.fullName}
               </div>
+              <div className="text-sm">
+                <b>Kime:</b> {tx.toUser?.fullName}
+              </div>
+
+              {/* 🔒 BUTONLAR SADECE GELEN ZİMMETTE */}
+              {isIncoming && (
+                <div className="flex gap-2 pt-2">
+                  {isPending && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => runAction(tx, "accept")}
+                        disabled={isLoading}
+                      >
+                        Kabul
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => runAction(tx, "reject")}
+                        disabled={isLoading}
+                      >
+                        Red
+                      </Button>
+                    </>
+                  )}
+
+                  {isAccepted && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => runAction(tx, "return")}
+                        disabled={isLoading}
+                      >
+                        İade Et
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         );
       })}
-
-      {/* ================= MODAL ================= */}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Zimmet Yap</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Kullanıcı Ara
-              </label>
-              <Input
-                placeholder="İsim veya departman ara..."
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2 max-h-60 overflow-auto border rounded-md p-2">
-              {filteredUsers.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Kullanıcı bulunamadı
-                </p>
-              ) : (
-                filteredUsers.map((u) => (
-                  <div
-                    key={u.id}
-                    className={`border rounded p-2 cursor-pointer hover:bg-muted transition-colors ${
-                      toUserId === u.id ? "bg-blue-50 border-blue-300" : ""
-                    }`}
-                    onClick={() => setToUserId(u.id)}
-                  >
-                    <div className="font-medium">{u.fullName}</div>
-                    {u.department && (
-                      <div className="text-xs text-muted-foreground">
-                        {u.department}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOpen(false);
-                setToUserId("");
-                setUserSearch("");
-              }}
-            >
-              İptal
-            </Button>
-            <Button
-              onClick={sendZimmet}
-              disabled={!toUserId || actionLoading === "zimmet"}
-            >
-              {actionLoading === "zimmet" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Zimmetleniyor...
-                </>
-              ) : (
-                "Zimmetle"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

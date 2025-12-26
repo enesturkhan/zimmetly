@@ -13,6 +13,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { type AuthState } from "@/store/authStore";
 
 type UserMe = {
   id: string;
@@ -32,12 +34,15 @@ type DocumentResponse = {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const getToken = useAuthStore((s: any) => s.getToken);
-  const logout = useAuthStore((s: any) => s.logout);
+  const getToken = useAuthStore((s: AuthState) => s.getToken);
+  const logout = useAuthStore((s: AuthState) => s.logout);
 
   const [logoutLoading, setLogoutLoading] = useState(false);
 
   const [user, setUser] = useState<UserMe | null>(null);
+
+  const [pendingCount, setPendingCount] = useState(0);
+
   const [docNumber, setDocNumber] = useState("");
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -59,7 +64,8 @@ export default function DashboardPage() {
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // ---- USER FETCH ----
+  /* ================= AUTH ================= */
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -67,43 +73,58 @@ export default function DashboardPage() {
       return;
     }
 
-    async function fetchUser() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(setUser)
+      .catch(() => {
         logout();
         router.push("/login");
-        return;
-      }
-
-      setUser(data);
-    }
-
-    fetchUser();
+      });
   }, [getToken, logout, router]);
 
-  // ---- USER LIST FETCH ----
+  /* ================= PENDING COUNT ================= */
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const userId = user.id;
+
+    async function fetchPendingCount() {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/transactions/me`,
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }
+      );
+
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+
+      const count = data.filter(
+        (t) =>
+          (t.toUser?.id === userId || t.toUserId === userId) &&
+          t.status === "PENDING"
+      ).length;
+
+      setPendingCount(count);
+    }
+
+    fetchPendingCount();
+  }, [user?.id, getToken]);
+
+  /* ================= USERS ================= */
+
   useEffect(() => {
     const token = getToken();
     if (!token) return;
 
-    async function fetchUsers() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-
-      if (Array.isArray(data)) {
-        setUsers(data);
-      }
-    }
-
-    fetchUsers();
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/assignable`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d) && setUsers(d));
   }, [getToken]);
 
   // ---- DROPDOWN DIŞINA TIKLAYINCA KAPATMA ----
@@ -295,40 +316,48 @@ export default function DashboardPage() {
     }
   };
 
-  // ---- ÇIKIŞ YAP ----
-  const handleLogout = () => {
-    setLogoutLoading(true);
-
-    setTimeout(() => {
-      logout();
-      router.push("/login");
-    }, 500);
-  };
-
   if (!user) return <p className="p-6">Yükleniyor...</p>;
 
   return (
     <div className="min-h-screen p-6 max-w-3xl mx-auto space-y-6">
       {/* NAVBAR */}
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Hoşgeldiniz, {user.fullName}</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">
+          Hoşgeldiniz, {user.fullName}
+        </h2>
 
         <Button
           variant="destructive"
           disabled={logoutLoading}
-          onClick={handleLogout}
+          onClick={() => {
+            setLogoutLoading(true);
+            logout();
+            router.push("/login");
+          }}
         >
-          {logoutLoading ? "Çıkış yapılıyor..." : "Çıkış Yap"}
+          Çıkış Yap
         </Button>
       </div>
 
-      {/* ÜST MENÜ */}
-      <div className="flex gap-3">
+      {/* MENU */}
+      <div className="flex gap-3 items-center">
         <Button onClick={() => router.push("/zimmet")}>
           Zimmet Yap (Detaylı)
         </Button>
-        <Button onClick={() => router.push("/gecmisim")}>
+
+        <Button
+          onClick={() => router.push("/gecmisim")}
+          className="relative"
+        >
           Benim Geçmişim
+          {pendingCount > 0 && (
+            <Badge
+              variant="destructive"
+              className="absolute -top-2 -right-2 px-2 py-0.5 text-xs"
+            >
+              {pendingCount}
+            </Badge>
+          )}
         </Button>
 
         {user.role === "ADMIN" && (

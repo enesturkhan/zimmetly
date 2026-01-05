@@ -8,13 +8,15 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { type AuthState } from "@/store/authStore";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { type AuthState } from "@/store/authStore";
+
+/* ================= TYPES ================= */
 
 type UserMe = {
   id: string;
@@ -32,19 +34,65 @@ type DocumentResponse = {
   number: string;
 };
 
+type TxItem = {
+  id: string;
+  status: string;
+  createdAt: string;
+  fromUser?: { fullName: string };
+  toUser?: { fullName: string };
+};
+
+/* ================= HELPERS ================= */
+
+function formatDateTR(iso?: string) {
+  if (!iso) return "-";
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(iso));
+}
+
+function statusLabelTR(status?: string) {
+  switch (status) {
+    case "PENDING":
+      return "Beklemede";
+    case "ACCEPTED":
+      return "Kabul Edildi";
+    case "REJECTED":
+      return "Reddedildi";
+    case "RETURNED":
+      return "İade";
+    case "CANCELLED":
+      return "İptal";
+    default:
+      return status;
+  }
+}
+
+function statusVariant(status?: string) {
+  if (status === "ACCEPTED") return "default";
+  if (status === "PENDING") return "secondary";
+  if (status === "REJECTED" || status === "CANCELLED") return "destructive";
+  return "outline";
+}
+
+/* ================= PAGE ================= */
+
 export default function DashboardPage() {
   const router = useRouter();
   const getToken = useAuthStore((s: AuthState) => s.getToken);
   const logout = useAuthStore((s: AuthState) => s.logout);
 
-  const [logoutLoading, setLogoutLoading] = useState(false);
-
   const [user, setUser] = useState<UserMe | null>(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   const [pendingCount, setPendingCount] = useState(0);
 
   const [docNumber, setDocNumber] = useState("");
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
+  const [timeline, setTimeline] = useState<TxItem[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
   const [errorMsg, setErrorMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -68,10 +116,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    if (!token) return router.push("/login");
 
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -89,29 +134,19 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const userId = user.id;
-
-    async function fetchPendingCount() {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/transactions/me`,
-        {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        }
-      );
-
-      const data = await res.json();
-      if (!Array.isArray(data)) return;
-
-      const count = data.filter(
-        (t) =>
-          (t.toUser?.id === userId || t.toUserId === userId) &&
-          t.status === "PENDING"
-      ).length;
-
-      setPendingCount(count);
-    }
-
-    fetchPendingCount();
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/me`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        const count = data.filter(
+          (t) =>
+            (t.toUser?.id === user.id || t.toUserId === user.id) &&
+            t.status === "PENDING"
+        ).length;
+        setPendingCount(count);
+      });
   }, [user?.id, getToken]);
 
   /* ================= USERS ================= */
@@ -165,20 +200,15 @@ export default function DashboardPage() {
       );
     });
 
-  // ---- EVRAK ARAMA ----
+  /* ================= EVRAK ARAMA ================= */
+
   const runSearch = async () => {
     setErrorMsg("");
     setDocResult(null);
+    setTimeline([]);
 
-    const trimmed = docNumber.trim();
-
-    if (!trimmed) {
+    if (!docNumber) {
       setErrorMsg("Evrak numarası giriniz.");
-      return;
-    }
-
-    if (!/^[0-9]+$/.test(trimmed)) {
-      setErrorMsg("Sadece numara giriniz.");
       return;
     }
 
@@ -187,37 +217,40 @@ export default function DashboardPage() {
     try {
       const token = getToken();
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/documents/${trimmed}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      const docRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/documents/${docNumber}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      const data = await res.json();
+      const docData = await docRes.json();
 
-      if (!res.ok) {
-        setErrorMsg(data.message || "Evrak bulunamadı.");
-        setZimmetNumber(trimmed); // kaydı olmayan evrak → zimmet numarasına otomatik yaz
-        setDocNumber(""); // arama inputunu temizle
+      if (!docRes.ok) {
+        setErrorMsg(docData.message || "Evrak bulunamadı.");
         return;
       }
 
-      setDocResult(data);
-      setZimmetNumber(data.number); // bulunan evrak → zimmet numarasına yaz
-      setDocNumber(""); // arama inputunu temizle
+      setDocResult(docData);
+      setZimmetNumber(docData.number); // bulunan evrak → zimmet numarasına yaz
+
+      /* 🔹 TIMELINE */
+      setTimelineLoading(true);
+      const txRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/transactions/document/${docData.number}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const txData = await txRes.json();
+      setTimeline(Array.isArray(txData) ? txData : []);
     } catch {
       setErrorMsg("Bir hata oluştu.");
     } finally {
       setIsLoading(false);
+      setTimelineLoading(false);
     }
   };
 
-  // ENTER ile arama
   const handleKeyDownSearch = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      runSearch();
-    }
+    if (e.key === "Enter") runSearch();
   };
 
   // ---- ZİMMETLEME ----
@@ -265,6 +298,16 @@ export default function DashboardPage() {
       setZimmetUserId("");
       setZimmetUserSearch("");
       setZimmetNumber("");
+
+      // Timeline'ı yenile
+      if (docResult) {
+        const txRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/transactions/document/${docResult.number}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const txData = await txRes.json();
+        setTimeline(Array.isArray(txData) ? txData : []);
+      }
     } finally {
       setIsZimmetLoading(false);
     }
@@ -318,14 +361,17 @@ export default function DashboardPage() {
 
   if (!user) return <p className="p-6">Yükleniyor...</p>;
 
+  const lastAccepted = [...timeline]
+    .reverse()
+    .find((t) => t.status === "ACCEPTED");
+
   return (
     <div className="min-h-screen p-6 max-w-3xl mx-auto space-y-6">
-      {/* NAVBAR */}
+      {/* HEADER */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">
           Hoşgeldiniz, {user.fullName}
         </h2>
-
         <Button
           variant="destructive"
           disabled={logoutLoading}
@@ -345,10 +391,7 @@ export default function DashboardPage() {
           Zimmet Yap (Detaylı)
         </Button>
 
-        <Button
-          onClick={() => router.push("/gecmisim")}
-          className="relative"
-        >
+        <Button onClick={() => router.push("/gecmisim")} className="relative">
           Benim Geçmişim
           {pendingCount > 0 && (
             <Badge
@@ -372,22 +415,21 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* --- EVRAK ARAMA --- */}
+      {/* EVRAK SORGULA */}
       <Card>
         <CardHeader>
           <CardTitle>Evrak Sorgula</CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             <Input
-              placeholder="Evrak numarası girin"
+              placeholder="Evrak numarası"
               value={docNumber}
+              onChange={(e) =>
+                setDocNumber(e.target.value.replace(/\D/g, ""))
+              }
               onKeyDown={handleKeyDownSearch}
-              onChange={(e) => {
-                // Sadece rakamları kabul et
-                const value = e.target.value.replace(/[^0-9]/g, "");
-                setDocNumber(value);
-              }}
             />
             <Button onClick={runSearch} disabled={isLoading}>
               {isLoading ? "Aranıyor..." : "Ara"}
@@ -401,19 +443,61 @@ export default function DashboardPage() {
           )}
 
           {docResult && (
-            <div className="border rounded-md p-4">
-              <p>
-                <b>Evrak No:</b> {docResult.number}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                Zimmet geçmişi henüz bu ekrana bağlı değil.
-              </p>
+            <div className="border rounded-md p-4 space-y-3">
+              <div className="flex justify-between">
+                <b>Evrak No: {docResult.number}</b>
+                {lastAccepted && (
+                  <Badge>
+                    Şu an: {lastAccepted.toUser?.fullName}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="pt-2 border-t">
+                <p className="font-medium mb-2">Zimmet Geçmişi</p>
+
+                {timelineLoading && (
+                  <p className="text-sm text-muted-foreground">
+                    Yükleniyor...
+                  </p>
+                )}
+
+                {!timelineLoading && timeline.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Zimmet kaydı yok.
+                  </p>
+                )}
+
+                {timeline
+                  .slice()
+                  .reverse()
+                  .map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="border rounded p-2 mb-2 text-sm"
+                    >
+                      <div>
+                        <b>{tx.fromUser?.fullName}</b> →{" "}
+                        <b>{tx.toUser?.fullName}</b>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatDateTR(tx.createdAt)}
+                      </div>
+                      <Badge
+                        variant={statusVariant(tx.status)}
+                        className="mt-1"
+                      >
+                        {statusLabelTR(tx.status)}
+                      </Badge>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* --- HIZLI ZİMMET FORMU --- */}
+      {/* HIZLI ZİMMET FORMU */}
       <Card>
         <CardHeader>
           <CardTitle>Hızlı Zimmet</CardTitle>
@@ -499,7 +583,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* --- BAŞARI MESAJI: ZİMMET BUTONUNUN ALTINDA, KARTIN DIŞINDA --- */}
+      {/* BAŞARI MESAJI: ZİMMET BUTONUNUN ALTINDA, KARTIN DIŞINDA */}
       <div
         className={`overflow-hidden transition-all duration-300 ${
           showSuccessMessage ? "max-h-20 opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"

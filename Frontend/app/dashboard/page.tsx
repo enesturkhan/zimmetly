@@ -431,7 +431,9 @@ export default function DashboardPage() {
               }
               onKeyDown={handleKeyDownSearch}
             />
-            <Button onClick={runSearch} disabled={isLoading}>
+            <Button onClick={runSearch} 
+            disabled={isLoading}
+            className="cursor-pointer" >
               {isLoading ? "Aranıyor..." : "Ara"}
             </Button>
           </div>
@@ -570,7 +572,7 @@ export default function DashboardPage() {
           <Button
             onClick={() => handleZimmet()}
             disabled={isZimmetLoading}
-            className="w-full"
+            className="w-full cursor-pointer"
           >
             {isZimmetLoading ? "Zimmetleniyor..." : "Zimmetle"}
           </Button>

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TransactionStatus } from '@prisma/client';
+import { DocumentStatus, TransactionStatus } from '@prisma/client';
 
 @Injectable()
 export class TransactionService {
@@ -38,21 +38,26 @@ export class TransactionService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 3) Evrak var mı? Yoksa OLUŞTUR
-      let doc = await tx.document.findUnique({
+      // 3) Evrak var mı? Yoksa OLUŞTUR (upsert ile)
+      const doc = await tx.document.upsert({
         where: { number: documentNumber },
+        update: {},
+        create: {
+          number: documentNumber,
+          currentHolderId: fromUserId, // ilk oluşturan "sende" kabul edilebilir
+          status: DocumentStatus.ACTIVE,
+        },
+        select: { number: true, currentHolderId: true, status: true },
       });
 
-      if (!doc) {
-        doc = await tx.document.create({
-          data: {
-            number: documentNumber,
-            currentHolderId: fromUserId,
-          },
-        });
+      // 4) ARŞİVDEYKEN ZİMMET ENGELİ
+      if (doc.status === DocumentStatus.ARCHIVED) {
+        throw new BadRequestException(
+          'Bu evrak arşivlenmiş. Yeni zimmet oluşturulamaz.',
+        );
       }
 
-      // 4) Aynı evrak için BEKLEYEN zimmet var mı?
+      // 5) Aynı evrak için BEKLEYEN zimmet var mı?
       const pending = await tx.transaction.findFirst({
         where: {
           documentNumber,
@@ -67,7 +72,7 @@ export class TransactionService {
         );
       }
 
-      // 5) Aynı kişiye ÜST ÜSTE zimmet engeli
+      // 6) Aynı kişiye ÜST ÜSTE zimmet engeli
       const lastTx = await tx.transaction.findFirst({
         where: { documentNumber },
         orderBy: { createdAt: 'desc' },
@@ -84,17 +89,14 @@ export class TransactionService {
         );
       }
 
-      // 6) Yetki: Kabul edildiyse sadece currentHolder gönderebilir
-      if (
-        doc.currentHolderId &&
-        doc.currentHolderId !== fromUserId
-      ) {
+      // 7) Yetki: Sadece mevcut sahibi zimmetleyebilir
+      if (doc.currentHolderId && doc.currentHolderId !== fromUserId) {
         throw new ForbiddenException(
-          'Bu evrak sende değil, zimmetleyemezsin',
+          'Bu evrak sende değil. Sadece evrakın mevcut sahibi zimmetleyebilir.',
         );
       }
 
-      // 7) Hedef kullanıcı aktif mi?
+      // 8) Hedef kullanıcı aktif mi?
       const toUser = await tx.user.findUnique({
         where: { id: toUserId },
         select: { id: true, isActive: true },
@@ -109,7 +111,7 @@ export class TransactionService {
         );
       }
 
-      // 8) Transaction oluştur
+      // 9) Transaction oluştur
       const created = await tx.transaction.create({
         data: {
           documentNumber,

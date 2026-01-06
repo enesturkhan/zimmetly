@@ -1,6 +1,16 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { DocumentService } from './document.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
+import { ArchiveDocumentDto } from './dto/archive-document.dto';
 import { SupabaseAuthGuard } from 'src/auth/guards/supabase.guard';
 
 @Controller('documents')
@@ -22,5 +32,14 @@ export class DocumentController {
   @Get(':number')
   findByNumber(@Param('number') number: string) {
     return this.documentService.findByNumber(number);
+  }
+
+  @Patch(':number/archive')
+  archive(
+    @Param('number') number: string,
+    @Body() dto: ArchiveDocumentDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.documentService.archive(number, req.user.id, dto);
   }
 }

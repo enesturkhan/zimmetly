@@ -11,7 +11,7 @@ import { ArchiveDocumentDto } from './dto/archive-document.dto';
 
 @Injectable()
 export class DocumentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   // İleride Transaction module burayı kullanacak
   async findOrCreateByNumber(number: string) {
@@ -38,6 +38,7 @@ export class DocumentService {
 
   async findAll() {
     return this.prisma.document.findMany({
+      where: { status: DocumentStatus.ACTIVE },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -45,6 +46,14 @@ export class DocumentService {
   async findByNumber(number: string) {
     const doc = await this.prisma.document.findUnique({
       where: { number },
+      include: {
+        currentHolder: {
+          select: { id: true, fullName: true, department: true },
+        },
+        archivedBy: {
+          select: { id: true, fullName: true },
+        },
+      },
     });
 
     if (!doc) {
@@ -92,6 +101,23 @@ export class DocumentService {
       if (pending) {
         throw new BadRequestException(
           'Bu evrak için bekleyen zimmet var. Önce kabul/ret işlemi yapılmalı.',
+        );
+      }
+
+      // ✅ Son transaction ACCEPTED ve toUserId === userId olmalı
+      const lastTx = await tx.transaction.findFirst({
+        where: { documentNumber: docNumber },
+        orderBy: { createdAt: 'desc' },
+        select: { status: true, toUserId: true },
+      });
+
+      if (
+        !lastTx ||
+        lastTx.status !== TransactionStatus.ACCEPTED ||
+        lastTx.toUserId !== userId
+      ) {
+        throw new BadRequestException(
+          'Bu evrak yalnızca kabul edilmiş ve sende ise arşivlenebilir.',
         );
       }
 

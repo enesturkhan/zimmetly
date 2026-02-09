@@ -6,22 +6,31 @@ import { useAuthStore } from "@/store/authStore";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FileText, ArrowRight, Archive } from "lucide-react";
 
-type HistoryItem = {
-  fromUser?: string;
-  toUser: string;
+type TimelineItem = {
+  type: string;
+  id?: string;
+  status?: string;
   createdAt: string;
+  fromUser?: { fullName: string };
+  toUser?: { fullName: string };
+  user?: { fullName: string };
 };
 
 type DocumentDetails = {
   documentNumber: string;
+  number?: string;
+  status?: string;
+  archivedAt?: string | null;
+  archivedBy?: { id: string; fullName: string } | null;
+  currentHolderId?: string | null;
   currentHolder: {
     id: string;
     fullName: string;
     department: string;
   } | null;
-  history: HistoryItem[];
 };
 
 export default function DocumentDetailPage() {
@@ -35,6 +44,9 @@ export default function DocumentDetailPage() {
   const [data, setData] = useState<DocumentDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   // Token'ı localStorage'dan geri yükle
   useEffect(() => {
@@ -53,6 +65,19 @@ export default function DocumentDetailPage() {
       router.replace("/login");
     }
   }, [token, router]);
+
+  // Giriş yapan kullanıcı bilgisi
+  useEffect(() => {
+    const stored = token || localStorage.getItem("access_token");
+    if (!stored) return;
+
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${stored}` },
+    })
+      .then((r) => r.json())
+      .then((u) => u?.id && setCurrentUserId(u.id))
+      .catch(() => { });
+  }, [token]);
 
   // Doküman detayını çek
   useEffect(() => {
@@ -78,23 +103,58 @@ export default function DocumentDetailPage() {
         return;
       }
 
-      const history = Array.isArray(json?.history)
-        ? json.history
-        : Array.isArray(json?.transactions)
-          ? json.transactions
-          : Array.isArray(json?.movements)
-            ? json.movements
-            : [];
-
+      const docNumber = json.number ?? number;
       setData({
         ...json,
-        history,
+        documentNumber: docNumber,
       });
+
+      const txRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/transactions/document/${docNumber}`,
+        { headers: { Authorization: `Bearer ${stored}` } }
+      );
+      const txData = await txRes.json();
+      setTimeline(Array.isArray(txData) ? txData : []);
       setLoading(false);
     }
 
     loadDocument();
   }, [token, number]);
+
+  const handleArchive = async () => {
+    if (!number || !data || archiveLoading) return;
+    const stored = token || localStorage.getItem("access_token");
+    if (!stored) return;
+
+    setArchiveLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/documents/${number}/archive`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${stored}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }
+      );
+      const jsonRes = await res.json();
+      if (!res.ok) {
+        setErrorMsg(jsonRes.message || "Arşivleme başarısız.");
+        return;
+      }
+      setData({
+        ...data,
+        status: "ARCHIVED",
+      });
+    } catch {
+      setErrorMsg("Arşivleme sırasında hata oluştu.");
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
 
   // Yükleniyor ekranı (token veya data için)
   if (loading && !data) {
@@ -131,43 +191,104 @@ export default function DocumentDetailPage() {
           </CardHeader>
 
           <CardContent className="space-y-4">
+            {data.status === "ARCHIVED" && (
+              <div className="p-4 border rounded-lg bg-amber-50 text-amber-800">
+                <p className="font-medium">Bu evrak arşivlenmiştir</p>
+                <p>Arşivleyen: {data.archivedBy?.fullName ?? "-"}</p>
+                <p>
+                  Tarih:{" "}
+                  {data.archivedAt
+                    ? new Date(data.archivedAt).toLocaleString("tr-TR")
+                    : "-"}
+                </p>
+              </div>
+            )}
             <div className="p-4 border rounded-lg bg-blue-50">
-              <p className="font-medium">Şu anda kimde:</p>
+              <p className="font-medium">En son kimde:</p>
               <p className="mt-1 text-blue-700">
                 {data.currentHolder
-                  ? `${data.currentHolder.fullName} (${data.currentHolder.department})`
+                  ? `${data.currentHolder.fullName}${data.currentHolder.department ? ` (${data.currentHolder.department})` : ""}${data.currentHolder.id === currentUserId ? " (sende)" : ""}`
                   : "Bu evrak kimseye zimmetli değil."}
               </p>
             </div>
+            {data.status === "ACTIVE" &&
+              (data.currentHolderId === currentUserId ||
+                data.currentHolder?.id === currentUserId) && (
+                <Button
+                  variant="outline"
+                  onClick={handleArchive}
+                  disabled={archiveLoading}
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  {archiveLoading ? "Arşivleniyor..." : "Arşivle"}
+                </Button>
+              )}
 
             <div>
               <h3 className="font-semibold mb-3">Geçmiş Hareketler</h3>
 
-              {(!data.history || data.history.length === 0) && (
+              {timeline.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   Bu evrak için henüz hareket bulunmuyor.
                 </p>
               )}
 
               <div className="space-y-3">
-                {(data.history || []).map((h, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 p-3 border rounded-lg bg-gray-50"
-                  >
-                    <span className="font-medium">
-                      {h.fromUser ? h.fromUser : "İlk Kayıt"}
-                    </span>
-
-                    <ArrowRight className="text-gray-600" size={18} />
-
-                    <span className="font-medium">{h.toUser}</span>
-
-                    <span className="text-xs text-gray-500 ml-auto">
-                      {new Date(h.createdAt).toLocaleString("tr-TR")}
-                    </span>
-                  </div>
-                ))}
+                {timeline.map((item, idx) => {
+                  const formatDate = (iso?: string) =>
+                    iso
+                      ? new Date(iso).toLocaleString("tr-TR")
+                      : "-";
+                  if (item.type === "ARCHIVED") {
+                    return (
+                      <div
+                        key={`archived-${item.createdAt}-${idx}`}
+                        className="flex items-center gap-2 p-3 border rounded-lg bg-amber-50"
+                      >
+                        <span className="font-medium">—</span>
+                        <ArrowRight className="text-gray-600" size={18} />
+                        <span className="font-medium">
+                          Evrak arşivlendi ({item.user?.fullName ?? "-"} tarafından)
+                        </span>
+                        <span className="text-xs text-gray-500 ml-auto">
+                          {formatDate(item.createdAt)}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (item.type === "UNARCHIVED") {
+                    return (
+                      <div
+                        key={`unarchived-${item.createdAt}-${idx}`}
+                        className="flex items-center gap-2 p-3 border rounded-lg bg-green-50"
+                      >
+                        <span className="font-medium">—</span>
+                        <ArrowRight className="text-gray-600" size={18} />
+                        <span className="font-medium">Evrak arşivden çıkarıldı</span>
+                        <span className="text-xs text-gray-500 ml-auto">
+                          {formatDate(item.createdAt)}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={item.id ?? `tx-${idx}`}
+                      className="flex items-center gap-2 p-3 border rounded-lg bg-gray-50"
+                    >
+                      <span className="font-medium">
+                        {item.fromUser?.fullName ?? "İlk Kayıt"}
+                      </span>
+                      <ArrowRight className="text-gray-600" size={18} />
+                      <span className="font-medium">
+                        {item.toUser?.fullName ?? "-"}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-auto">
+                        {formatDate(item.createdAt)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </CardContent>

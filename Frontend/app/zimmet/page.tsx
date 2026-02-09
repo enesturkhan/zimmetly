@@ -51,7 +51,7 @@ export default function ZimmetDetailPage() {
     if (!token) return;
 
     async function load() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/assignable`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

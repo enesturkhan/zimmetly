@@ -32,14 +32,19 @@ type UserOption = {
 
 type DocumentResponse = {
   number: string;
+  status?: string;
+  archivedAt?: string | null;
+  archivedBy?: { id: string; fullName: string } | null;
 };
 
-type TxItem = {
-  id: string;
-  status: string;
+type TimelineItem = {
+  type: string;
+  id?: string;
+  status?: string;
   createdAt: string;
   fromUser?: { fullName: string };
   toUser?: { fullName: string };
+  user?: { fullName: string };
 };
 
 /* ================= HELPERS ================= */
@@ -90,7 +95,7 @@ export default function DashboardPage() {
 
   const [docNumber, setDocNumber] = useState("");
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
-  const [timeline, setTimeline] = useState<TxItem[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState("");
@@ -362,6 +367,7 @@ export default function DashboardPage() {
   if (!user) return <p className="p-6">Yükleniyor...</p>;
 
   const lastAccepted = [...timeline]
+    .filter((t) => t.type === "TRANSACTION")
     .reverse()
     .find((t) => t.status === "ACCEPTED");
 
@@ -446,12 +452,28 @@ export default function DashboardPage() {
 
           {docResult && (
             <div className="border rounded-md p-4 space-y-3">
+              {docResult.status === "ARCHIVED" && (
+                <div className="p-3 border rounded-md bg-amber-50 text-amber-800 text-sm">
+                  <p className="font-medium">Bu evrak arşivlenmiştir</p>
+                  <p>Arşivleyen: {docResult.archivedBy?.fullName ?? "-"}</p>
+                  <p>
+                    Tarih:{" "}
+                    {docResult.archivedAt
+                      ? formatDateTR(docResult.archivedAt)
+                      : "-"}
+                  </p>
+                </div>
+              )}
               <div className="flex justify-between">
                 <b>Evrak No: {docResult.number}</b>
-                {lastAccepted && (
+                {lastAccepted && docResult.status !== "ARCHIVED" && (
                   <Badge>
-                    Şu an: {lastAccepted.toUser?.fullName}
+                    En son kimde: {lastAccepted.toUser?.fullName}
+                    {lastAccepted.toUser?.id === user?.id ? " (sende)" : ""}
                   </Badge>
+                )}
+                {docResult.status === "ARCHIVED" && (
+                  <Badge variant="secondary">Arşivlendi</Badge>
                 )}
               </div>
 
@@ -464,35 +486,68 @@ export default function DashboardPage() {
                   </p>
                 )}
 
-                {!timelineLoading && timeline.length === 0 && (
+                {!timelineLoading && timeline.length === 0 && docResult.status !== "ARCHIVED" && (
                   <p className="text-sm text-muted-foreground">
                     Zimmet kaydı yok.
                   </p>
                 )}
 
-                {timeline
-                  .slice()
-                  .reverse()
-                  .map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="border rounded p-2 mb-2 text-sm"
-                    >
-                      <div>
-                        <b>{tx.fromUser?.fullName}</b> →{" "}
-                        <b>{tx.toUser?.fullName}</b>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTR(tx.createdAt)}
-                      </div>
-                      <Badge
-                        variant={statusVariant(tx.status)}
-                        className="mt-1"
+                {timeline.map((item, idx) => {
+                    if (item.type === "ARCHIVED") {
+                      return (
+                        <div
+                          key={`archived-${item.createdAt}-${idx}`}
+                          className="border rounded p-2 mb-2 text-sm bg-amber-50"
+                        >
+                          <div>
+                            Evrak arşivlendi ({item.user?.fullName ?? "-"} tarafından)
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDateTR(item.createdAt)}
+                          </div>
+                          <Badge variant="secondary" className="mt-1">
+                            Arşivlendi
+                          </Badge>
+                        </div>
+                      );
+                    }
+                    if (item.type === "UNARCHIVED") {
+                      return (
+                        <div
+                          key={`unarchived-${item.createdAt}-${idx}`}
+                          className="border rounded p-2 mb-2 text-sm bg-green-50"
+                        >
+                          <div>Evrak arşivden çıkarıldı</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDateTR(item.createdAt)}
+                          </div>
+                          <Badge variant="outline" className="mt-1">
+                            Arşivden çıkarıldı
+                          </Badge>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        key={item.id ?? `tx-${idx}`}
+                        className="border rounded p-2 mb-2 text-sm"
                       >
-                        {statusLabelTR(tx.status)}
-                      </Badge>
-                    </div>
-                  ))}
+                        <div>
+                          <b>{item.fromUser?.fullName}</b> →{" "}
+                          <b>{item.toUser?.fullName}</b>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatDateTR(item.createdAt)}
+                        </div>
+                        <Badge
+                          variant={statusVariant(item.status)}
+                          className="mt-1"
+                        >
+                          {statusLabelTR(item.status)}
+                        </Badge>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}

@@ -86,6 +86,14 @@ export class TransactionService {
           where: { number: documentNumber },
           data: { status: DocumentStatus.ACTIVE },
         });
+        await tx.documentNote.create({
+          data: {
+            documentNumber,
+            actionType: DocumentActionType.UNARCHIVE,
+            note: '',
+            createdByUserId: fromUserId,
+          },
+        });
       }
 
       // 5) Aynı evrak için BEKLEYEN zimmet var mı?

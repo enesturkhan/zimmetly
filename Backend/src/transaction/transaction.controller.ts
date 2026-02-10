@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nest
 import { TransactionService } from "./transaction.service";
 import { SupabaseAuthGuard } from "../auth/guards/supabase.guard";
 import { CreateTransactionDto } from "./dto/create-transaction.dto";
+import { ReturnTransactionDto } from "./dto/return-transaction.dto";
 
 @Controller("transactions")
 @UseGuards(SupabaseAuthGuard)
@@ -39,7 +40,11 @@ export class TransactionController {
   }
 
   @Patch(":id/return")
-  returnBack(@Param("id") id: string, @Req() req: any) {
-    return this.service.returnBack(id, req.user.id);
+  returnBack(
+    @Param("id") id: string,
+    @Body() dto: ReturnTransactionDto,
+    @Req() req: any,
+  ) {
+    return this.service.returnBack(id, req.user.id, dto);
   }
 }

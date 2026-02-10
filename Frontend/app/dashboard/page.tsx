@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Timeline } from "@/components/Timeline";
+import { TimelineModal } from "@/components/TimelineModal";
 
 /* ================= TYPES ================= */
 
@@ -97,12 +99,14 @@ export default function DashboardPage() {
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [openTimeline, setOpenTimeline] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   // ---- ZİMMET FORMU ----
   const [zimmetNumber, setZimmetNumber] = useState("");
+  const [zimmetNote, setZimmetNote] = useState("");
   const [zimmetError, setZimmetError] = useState("");
   const [zimmetMessage, setZimmetMessage] = useState("");
   const [isZimmetLoading, setIsZimmetLoading] = useState(false);
@@ -284,10 +288,11 @@ export default function DashboardPage() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            documentNumber: zimmetNumber,
-            toUserId: finalUserId,
-          }),
+          body: JSON.stringify(
+            zimmetNote.trim()
+              ? { documentNumber: zimmetNumber, toUserId: finalUserId, note: zimmetNote.trim() }
+              : { documentNumber: zimmetNumber, toUserId: finalUserId },
+          ),
         }
       );
 
@@ -303,6 +308,7 @@ export default function DashboardPage() {
       setZimmetUserId("");
       setZimmetUserSearch("");
       setZimmetNumber("");
+      setZimmetNote("");
 
       // Timeline'ı yenile
       if (docResult) {
@@ -465,7 +471,16 @@ export default function DashboardPage() {
                 </div>
               )}
               <div className="flex justify-between">
-                <b>Evrak No: {docResult.number}</b>
+                <p className="font-medium">
+                  Evrak No:{" "}
+                  <button
+                    type="button"
+                    onClick={() => setOpenTimeline(true)}
+                    className="cursor-pointer underline-offset-2 hover:underline transition-colors text-left"
+                  >
+                    {docResult.number}
+                  </button>
+                </p>
                 {lastAccepted && docResult.status !== "ARCHIVED" && (
                   <Badge>
                     En son kimde: {lastAccepted.toUser?.fullName}
@@ -492,62 +507,9 @@ export default function DashboardPage() {
                   </p>
                 )}
 
-                {timeline.map((item, idx) => {
-                    if (item.type === "ARCHIVED") {
-                      return (
-                        <div
-                          key={`archived-${item.createdAt}-${idx}`}
-                          className="border rounded p-2 mb-2 text-sm bg-amber-50"
-                        >
-                          <div>
-                            Evrak arşivlendi ({item.user?.fullName ?? "-"} tarafından)
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatDateTR(item.createdAt)}
-                          </div>
-                          <Badge variant="secondary" className="mt-1">
-                            Arşivlendi
-                          </Badge>
-                        </div>
-                      );
-                    }
-                    if (item.type === "UNARCHIVED") {
-                      return (
-                        <div
-                          key={`unarchived-${item.createdAt}-${idx}`}
-                          className="border rounded p-2 mb-2 text-sm bg-green-50"
-                        >
-                          <div>Evrak arşivden çıkarıldı</div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatDateTR(item.createdAt)}
-                          </div>
-                          <Badge variant="outline" className="mt-1">
-                            Arşivden çıkarıldı
-                          </Badge>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div
-                        key={item.id ?? `tx-${idx}`}
-                        className="border rounded p-2 mb-2 text-sm"
-                      >
-                        <div>
-                          <b>{item.fromUser?.fullName}</b> →{" "}
-                          <b>{item.toUser?.fullName}</b>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatDateTR(item.createdAt)}
-                        </div>
-                        <Badge
-                          variant={statusVariant(item.status)}
-                          className="mt-1"
-                        >
-                          {statusLabelTR(item.status)}
-                        </Badge>
-                      </div>
-                    );
-                  })}
+                {!timelineLoading && timeline.length > 0 && (
+                  <Timeline items={timeline} />
+                )}
               </div>
             </div>
           )}
@@ -623,6 +585,17 @@ export default function DashboardPage() {
             )}
           </div>
 
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Zimmet Notu (opsiyonel)</label>
+            <textarea
+              value={zimmetNote}
+              onChange={(e) => setZimmetNote(e.target.value)}
+              placeholder="İsteğe bağlı açıklama"
+              className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isZimmetLoading}
+            />
+          </div>
+
           {/* ZİMMETLE BUTTON */}
           <Button
             onClick={() => handleZimmet()}
@@ -667,6 +640,16 @@ export default function DashboardPage() {
           </Alert>
         )}
       </div>
+
+      {docResult && (
+        <TimelineModal
+          open={openTimeline}
+          onOpenChange={setOpenTimeline}
+          documentNumber={docResult.number}
+          items={timeline}
+          loading={timelineLoading}
+        />
+      )}
     </div>
   );
 }

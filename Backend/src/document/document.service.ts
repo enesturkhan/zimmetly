@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { DocumentStatus, TransactionStatus } from '@prisma/client';
+import { DocumentActionType, DocumentStatus, TransactionStatus } from '@prisma/client';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { ArchiveDocumentDto } from './dto/archive-document.dto';
 
@@ -128,9 +128,16 @@ export class DocumentService {
           archivedAt: new Date(),
           archivedByUserId: userId,
           archiveDepartment: dto.archiveDepartment ?? null,
-          archiveNote: dto.archiveNote ?? null,
-          // istersen burada currentHolderId'yi null da yapabilirsin:
-          // currentHolderId: null,
+          archiveNote: dto.note ?? dto.archiveNote ?? null,
+        },
+      });
+
+      await tx.documentNote.create({
+        data: {
+          documentNumber: docNumber,
+          actionType: DocumentActionType.ARCHIVE,
+          note: dto.note,
+          createdByUserId: userId,
         },
       });
 

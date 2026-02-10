@@ -22,6 +22,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TimelineModal } from "@/components/TimelineModal";
+import type { TimelineEvent } from "@/components/Timeline";
 
 /* ================= TYPES ================= */
 
@@ -113,12 +115,23 @@ export default function GecmisimPage() {
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [archiveTx, setArchiveTx] = useState<TxItem | null>(null);
+  const [archiveNote, setArchiveNote] = useState("");
+  const [archiveError, setArchiveError] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [returnTx, setReturnTx] = useState<TxItem | null>(null);
+  const [returnNote, setReturnNote] = useState("");
+  const [returnError, setReturnError] = useState("");
+  const [returnLoading, setReturnLoading] = useState(false);
   const [assignTx, setAssignTx] = useState<TxItem | null>(null);
   const [assignUsers, setAssignUsers] = useState<UserOption[]>([]);
   const [assignUserId, setAssignUserId] = useState("");
+  const [assignNote, setAssignNote] = useState("");
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignError, setAssignError] = useState("");
+  const [openTimeline, setOpenTimeline] = useState(false);
+  const [selectedDocumentNumber, setSelectedDocumentNumber] = useState<string | null>(null);
+  const [selectedTimeline, setSelectedTimeline] = useState<TimelineEvent[]>([]);
+  const [timelineModalLoading, setTimelineModalLoading] = useState(false);
 
   /* ================= AUTH ================= */
 
@@ -190,7 +203,7 @@ export default function GecmisimPage() {
         (t) =>
           t.toUserId === me?.id &&
           t.status === "ACCEPTED" &&
-          (t.isActiveForMe ?? (t.document?.status ?? "ACTIVE") === "ACTIVE")
+          t.isActiveForMe === true
       ),
     [items, me]
   );
@@ -228,7 +241,7 @@ export default function GecmisimPage() {
   const canManageTx = (tx: TxItem) =>
     tx.status === "ACCEPTED" &&
     tx.toUserId === me?.id &&
-    (tx.isActiveForMe ?? (tx.document?.status ?? "ACTIVE") === "ACTIVE");
+    tx.isActiveForMe === true;
 
   const archiveBadgeText = (tx: TxItem) =>
     tx.document?.status === "ARCHIVED"
@@ -240,18 +253,47 @@ export default function GecmisimPage() {
       ? "secondary"
       : statusVariant(tx.status);
 
+  const openTimelineModal = async (docNumber: string) => {
+    setSelectedDocumentNumber(docNumber);
+    setSelectedTimeline([]);
+    setOpenTimeline(true);
+    setTimelineModalLoading(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/transactions/document/${docNumber}`,
+        { headers: { Authorization: `Bearer ${getToken()}` } }
+      );
+      const data = await res.json();
+      setSelectedTimeline(Array.isArray(data) ? data : []);
+    } catch {
+      setSelectedTimeline([]);
+    } finally {
+      setTimelineModalLoading(false);
+    }
+  };
+
   const handleArchiveConfirm = async () => {
     if (!archiveTx) return;
+    const note = archiveNote.trim();
+    if (!note) {
+      setArchiveError("Arşivleme notu zorunludur.");
+      return;
+    }
     const token = getToken();
     if (!token) return;
 
+    setArchiveError("");
     setArchiveLoading(true);
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/documents/${archiveTx.documentNumber}/archive`,
         {
           method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note }),
         }
       );
       const data = await res.json();
@@ -268,10 +310,47 @@ export default function GecmisimPage() {
         )
       );
       setArchiveTx(null);
+      setArchiveNote("");
     } catch (e: any) {
-      setError(e.message || "Arşivleme başarısız");
+      setArchiveError(e.message || "Arşivleme başarısız");
     } finally {
       setArchiveLoading(false);
+    }
+  };
+
+  const handleReturnConfirm = async () => {
+    if (!returnTx) return;
+    const note = returnNote.trim();
+    if (!note) {
+      setReturnError("İade notu zorunludur.");
+      return;
+    }
+    const token = getToken();
+    if (!token) return;
+
+    setReturnError("");
+    setReturnLoading(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/transactions/${returnTx.id}/return`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setReturnTx(null);
+      setReturnNote("");
+      fetchMine();
+    } catch (e: any) {
+      setReturnError(e.message || "İade işlemi başarısız");
+    } finally {
+      setReturnLoading(false);
     }
   };
 
@@ -298,8 +377,17 @@ export default function GecmisimPage() {
             className="border rounded p-3 space-y-1"
           >
             <div className="flex justify-between">
-              <b>Evrak No: {tx.documentNumber}</b>
-              <Badge variant={archiveBadgeVariant(tx)}>
+              <p className="font-medium">
+                Evrak No:{" "}
+                <button
+                  type="button"
+                  onClick={() => openTimelineModal(tx.documentNumber)}
+                  className="cursor-pointer underline-offset-2 hover:underline transition-colors text-left"
+                >
+                  {tx.documentNumber}
+                </button>
+              </p>
+              <Badge variant={archiveBadgeVariant(tx)} className="cursor-pointer transition-colors">
                 {archiveBadgeText(tx)}
               </Badge>
             </div>
@@ -372,6 +460,7 @@ export default function GecmisimPage() {
                 onClick={() => {
                   setAssignTx(tx);
                   setAssignUserId("");
+                  setAssignNote("");
                   setAssignError("");
                 }}
               >
@@ -385,16 +474,21 @@ export default function GecmisimPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => runAction(tx, "return")}
-                disabled={actionLoading === tx.id}
+                onClick={() => {
+                  setReturnTx(tx);
+                  setReturnNote("");
+                  setReturnError("");
+                }}
+                disabled={returnLoading}
               >
-                {actionLoading === tx.id ? "İade Ediliyor..." : "İade Et"}
+                İade Et
               </Button>
               <Button
                 size="sm"
                 onClick={() => {
                   setAssignTx(tx);
                   setAssignUserId("");
+                  setAssignNote("");
                   setAssignError("");
                 }}
               >
@@ -404,7 +498,11 @@ export default function GecmisimPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => setArchiveTx(tx)}
+                  onClick={() => {
+                    setArchiveTx(tx);
+                    setArchiveNote("");
+                    setArchiveError("");
+                  }}
                   disabled={archiveLoading}
                 >
                   <Archive className="mr-2 h-4 w-4" />
@@ -421,7 +519,11 @@ export default function GecmisimPage() {
       <Dialog
         open={!!archiveTx}
         onOpenChange={(open) => {
-          if (!open && !archiveLoading) setArchiveTx(null);
+          if (!open && !archiveLoading) {
+            setArchiveTx(null);
+            setArchiveNote("");
+            setArchiveError("");
+          }
         }}
       >
         <DialogContent>
@@ -431,10 +533,27 @@ export default function GecmisimPage() {
               Bu evrak arşivlenecek ve aktif zimmetlerden çıkarılacaktır.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Arşivleme Notu</label>
+            <textarea
+              value={archiveNote}
+              onChange={(e) => setArchiveNote(e.target.value)}
+              placeholder="Evrak neden arşivleniyor?"
+              className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={archiveLoading}
+            />
+            {archiveError && (
+              <p className="text-sm text-destructive">{archiveError}</p>
+            )}
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setArchiveTx(null)}
+              onClick={() => {
+                setArchiveTx(null);
+                setArchiveNote("");
+                setArchiveError("");
+              }}
               disabled={archiveLoading}
             >
               İptal
@@ -451,11 +570,75 @@ export default function GecmisimPage() {
       </Dialog>
 
       <Dialog
+        open={!!returnTx}
+        onOpenChange={(open) => {
+          if (!open && !returnLoading) {
+            setReturnTx(null);
+            setReturnNote("");
+            setReturnError("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Evrakı İade Et</DialogTitle>
+            <DialogDescription>
+              Bu evrak önceki zimmet sahibine iade edilecektir.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">İade Notu</label>
+            <textarea
+              value={returnNote}
+              onChange={(e) => setReturnNote(e.target.value)}
+              placeholder="Evrak neden iade ediliyor?"
+              className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={returnLoading}
+            />
+            {returnError && (
+              <p className="text-sm text-destructive">{returnError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReturnTx(null);
+                setReturnNote("");
+                setReturnError("");
+              }}
+              disabled={returnLoading}
+            >
+              İptal
+            </Button>
+            <Button
+              onClick={handleReturnConfirm}
+              disabled={returnLoading}
+            >
+              {returnLoading ? "İade ediliyor..." : "İade Et"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TimelineModal
+        open={openTimeline}
+        onOpenChange={(open) => {
+          setOpenTimeline(open);
+          if (!open) setSelectedDocumentNumber(null);
+        }}
+        documentNumber={selectedDocumentNumber ?? ""}
+        items={selectedTimeline}
+        loading={timelineModalLoading}
+      />
+
+      <Dialog
         open={!!assignTx}
         onOpenChange={(open) => {
           if (!open && !assignLoading) {
             setAssignTx(null);
             setAssignUserId("");
+            setAssignNote("");
             setAssignError("");
           }
         }}
@@ -468,21 +651,33 @@ export default function GecmisimPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Kime zimmetlenecek?</label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm"
-              value={assignUserId}
-              onChange={(e) => setAssignUserId(e.target.value)}
-            >
-              <option value="">Kullanıcı seçin</option>
-              {assignUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName}
-                  {u.department ? ` — ${u.department}` : ""}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Kime zimmetlenecek?</label>
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                value={assignUserId}
+                onChange={(e) => setAssignUserId(e.target.value)}
+              >
+                <option value="">Kullanıcı seçin</option>
+                {assignUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName}
+                    {u.department ? ` — ${u.department}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Zimmet Notu (opsiyonel)</label>
+              <textarea
+                value={assignNote}
+                onChange={(e) => setAssignNote(e.target.value)}
+                placeholder="İsteğe bağlı açıklama"
+                className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={assignLoading}
+              />
+            </div>
             {assignError && (
               <p className="text-sm text-red-600">{assignError}</p>
             )}
@@ -507,6 +702,11 @@ export default function GecmisimPage() {
                 setAssignLoading(true);
                 setAssignError("");
                 try {
+                  const body: { documentNumber: string; toUserId: string; note?: string } = {
+                    documentNumber: assignTx.documentNumber,
+                    toUserId: assignUserId,
+                  };
+                  if (assignNote.trim()) body.note = assignNote.trim();
                   const res = await fetch(
                     `${process.env.NEXT_PUBLIC_API_URL}/transactions`,
                     {
@@ -515,15 +715,13 @@ export default function GecmisimPage() {
                         Authorization: `Bearer ${token}`,
                         "Content-Type": "application/json",
                       },
-                      body: JSON.stringify({
-                        documentNumber: assignTx.documentNumber,
-                        toUserId: assignUserId,
-                      }),
+                      body: JSON.stringify(body),
                     }
                   );
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.message);
                   setAssignTx(null);
+                  setAssignNote("");
                   fetchMine();
                 } catch (e: any) {
                   setAssignError(e.message || "Zimmet işlemi başarısız.");

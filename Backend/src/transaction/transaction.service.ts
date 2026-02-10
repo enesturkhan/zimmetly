@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentStatus, Role, TransactionStatus } from '@prisma/client';
+import { DocumentActionType, DocumentStatus, Role, TransactionStatus } from '@prisma/client';
+import { ReturnTransactionDto } from './dto/return-transaction.dto';
 
 @Injectable()
 export class TransactionService {
@@ -188,54 +189,25 @@ export class TransactionService {
 
     const documents = documentNumbers.length
       ? await this.prisma.document.findMany({
-        where: { number: { in: documentNumbers } },
-        select: {
-          number: true,
-          status: true,
-        },
-      })
+          where: { number: { in: documentNumbers } },
+          select: {
+            number: true,
+            status: true,
+            currentHolderId: true,
+          },
+        })
       : [];
 
     const docMap = new Map(documents.map((doc) => [doc.number, doc]));
 
-    const groupedByDoc = new Map<string, typeof transactions>();
-    for (const tx of transactions) {
-      const existing = groupedByDoc.get(tx.documentNumber);
-      if (existing) {
-        existing.push(tx);
-      } else {
-        groupedByDoc.set(tx.documentNumber, [tx]);
-      }
-    }
-
-    const activeAcceptIds = new Set<string>();
-
-    for (const [docNumber, txs] of groupedByDoc.entries()) {
-      const sorted = [...txs].sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    const isActiveForMe = (tx: (typeof transactions)[0]) => {
+      const doc = docMap.get(tx.documentNumber);
+      return (
+        tx.status === TransactionStatus.ACCEPTED &&
+        tx.toUserId === userId &&
+        doc?.currentHolderId === userId
       );
-
-      for (const tx of sorted) {
-        const isAcceptedByUser =
-          tx.status === TransactionStatus.ACCEPTED &&
-          tx.toUserId === userId;
-
-        if (!isAcceptedByUser) continue;
-
-        const txCreatedAt = new Date(tx.createdAt).getTime();
-        const hasLaterOutTx = sorted.some((other) => {
-          if (other.id === tx.id) return false;
-          if (other.fromUserId !== userId) return false;
-          const otherCreatedAt = new Date(other.createdAt).getTime();
-          return otherCreatedAt > txCreatedAt;
-        });
-
-        if (!hasLaterOutTx) {
-          activeAcceptIds.add(tx.id);
-        }
-      }
-    }
+    };
 
     return transactions.map((tx) => ({
       ...tx,
@@ -244,7 +216,7 @@ export class TransactionService {
             status: docMap.get(tx.documentNumber)?.status,
           }
         : undefined,
-      isActiveForMe: activeAcceptIds.has(tx.id),
+      isActiveForMe: isActiveForMe(tx),
     }));
   }
 
@@ -252,15 +224,7 @@ export class TransactionService {
   // DOCUMENT TIMELINE
   // =====================================================
   async listByDocument(number: string) {
-    const [doc, transactions] = await Promise.all([
-      this.prisma.document.findUnique({
-        where: { number },
-        select: {
-          status: true,
-          archivedAt: true,
-          archivedBy: { select: { id: true, fullName: true } },
-        },
-      }),
+    const [transactions, notes] = await Promise.all([
       this.prisma.transaction.findMany({
         where: { documentNumber: number },
         orderBy: { createdAt: 'asc' },
@@ -269,17 +233,38 @@ export class TransactionService {
           toUser: { select: { id: true, fullName: true, department: true } },
         },
       }),
+      this.prisma.documentNote.findMany({
+        where: {
+          documentNumber: number,
+          actionType: {
+            in: [
+              DocumentActionType.ARCHIVE,
+              DocumentActionType.UNARCHIVE,
+              DocumentActionType.RETURN,
+            ],
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          createdBy: { select: { id: true, fullName: true } },
+        },
+      }),
     ]);
 
-    const items: Array<{
+    type TimelineItem = {
       type: string;
       id?: string;
       createdAt: string;
+      archivedAt?: string;
+      archivedBy?: { id: string; fullName: string };
+      createdBy?: { id: string; fullName: string };
       fromUser?: { id: string; fullName: string; department: string | null };
       toUser?: { id: string; fullName: string; department: string | null };
-      user?: { id: string; fullName: string };
       status?: string;
-    }> = transactions.map((tx) => ({
+      note?: string;
+    };
+
+    const transactionItems: TimelineItem[] = transactions.map((tx) => ({
       type: 'TRANSACTION',
       id: tx.id,
       createdAt: tx.createdAt.toISOString(),
@@ -288,34 +273,38 @@ export class TransactionService {
       status: tx.status,
     }));
 
-    if (doc?.archivedAt && doc.archivedBy) {
-      items.push({
-        type: 'ARCHIVED',
-        createdAt: doc.archivedAt.toISOString(),
-        user: doc.archivedBy,
-      });
-    }
-
-    if (
-      doc?.status === DocumentStatus.ACTIVE &&
-      doc?.archivedAt &&
-      doc?.archivedBy
-    ) {
-      const archivedAt = doc.archivedAt.getTime();
-      const firstAfter = transactions.find(
-        (tx) => new Date(tx.createdAt).getTime() > archivedAt,
-      );
-      if (firstAfter) {
-        const txTime = new Date(firstAfter.createdAt).getTime();
-        items.push({
-          type: 'UNARCHIVED',
-          createdAt: new Date(txTime - 1).toISOString(),
-          user: doc.archivedBy,
-        });
+    const noteItems: TimelineItem[] = notes.map((n) => {
+      const createdAt = n.createdAt.toISOString();
+      const createdBy = n.createdBy
+        ? { id: n.createdBy.id, fullName: n.createdBy.fullName }
+        : undefined;
+      if (n.actionType === 'ARCHIVE') {
+        return {
+          type: 'ARCHIVED',
+          createdAt,
+          archivedAt: createdAt,
+          archivedBy: createdBy,
+          note: n.note,
+        };
       }
-    }
+      if (n.actionType === 'UNARCHIVE') {
+        return {
+          type: 'UNARCHIVED',
+          createdAt,
+          createdBy,
+          note: n.note || undefined,
+        };
+      }
+      // RETURN
+      return {
+        type: 'RETURN',
+        createdAt,
+        createdBy,
+        note: n.note,
+      };
+    });
 
-    items.sort(
+    const items = [...transactionItems, ...noteItems].sort(
       (a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
@@ -387,7 +376,7 @@ export class TransactionService {
   // =====================================================
   // RETURN (İade)
   // =====================================================
-  async returnBack(id: string, userId: string) {
+  async returnBack(id: string, userId: string, dto: ReturnTransactionDto) {
     return this.prisma.$transaction(async (tx) => {
       const t = await tx.transaction.findUnique({ where: { id } });
       if (!t) throw new NotFoundException('Zimmet bulunamadı');
@@ -418,6 +407,16 @@ export class TransactionService {
           fromUserId: t.toUserId,
           toUserId: t.fromUserId,
           status: TransactionStatus.PENDING,
+        },
+      });
+
+      await tx.documentNote.create({
+        data: {
+          documentNumber: t.documentNumber,
+          transactionId: id,
+          actionType: DocumentActionType.RETURN,
+          note: dto.note,
+          createdByUserId: userId,
         },
       });
 

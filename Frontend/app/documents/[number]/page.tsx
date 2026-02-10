@@ -7,7 +7,16 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, ArrowRight, Archive } from "lucide-react";
+import { FileText, Archive } from "lucide-react";
+import { Timeline } from "@/components/Timeline";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 type TimelineItem = {
   type: string;
@@ -46,6 +55,9 @@ export default function DocumentDetailPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [archiveNote, setArchiveNote] = useState("");
+  const [archiveError, setArchiveError] = useState("");
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   // Token'ı localStorage'dan geri yükle
@@ -121,13 +133,18 @@ export default function DocumentDetailPage() {
     loadDocument();
   }, [token, number]);
 
-  const handleArchive = async () => {
+  const handleArchiveConfirm = async () => {
     if (!number || !data || archiveLoading) return;
+    const note = archiveNote.trim();
+    if (!note) {
+      setArchiveError("Arşivleme notu zorunludur.");
+      return;
+    }
     const stored = token || localStorage.getItem("access_token");
     if (!stored) return;
 
+    setArchiveError("");
     setArchiveLoading(true);
-    setErrorMsg("");
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/documents/${number}/archive`,
@@ -137,20 +154,19 @@ export default function DocumentDetailPage() {
             Authorization: `Bearer ${stored}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ note }),
         }
       );
       const jsonRes = await res.json();
       if (!res.ok) {
-        setErrorMsg(jsonRes.message || "Arşivleme başarısız.");
+        setArchiveError(jsonRes.message || "Arşivleme başarısız.");
         return;
       }
-      setData({
-        ...data,
-        status: "ARCHIVED",
-      });
+      setData({ ...data, status: "ARCHIVED" });
+      setShowArchiveDialog(false);
+      setArchiveNote("");
     } catch {
-      setErrorMsg("Arşivleme sırasında hata oluştu.");
+      setArchiveError("Arşivleme sırasında hata oluştu.");
     } finally {
       setArchiveLoading(false);
     }
@@ -216,11 +232,15 @@ export default function DocumentDetailPage() {
                 data.currentHolder?.id === currentUserId) && (
                 <Button
                   variant="outline"
-                  onClick={handleArchive}
+                  onClick={() => {
+                    setShowArchiveDialog(true);
+                    setArchiveNote("");
+                    setArchiveError("");
+                  }}
                   disabled={archiveLoading}
                 >
                   <Archive className="mr-2 h-4 w-4" />
-                  {archiveLoading ? "Arşivleniyor..." : "Arşivle"}
+                  Arşivle
                 </Button>
               )}
 
@@ -233,67 +253,64 @@ export default function DocumentDetailPage() {
                 </p>
               )}
 
-              <div className="space-y-3">
-                {timeline.map((item, idx) => {
-                  const formatDate = (iso?: string) =>
-                    iso
-                      ? new Date(iso).toLocaleString("tr-TR")
-                      : "-";
-                  if (item.type === "ARCHIVED") {
-                    return (
-                      <div
-                        key={`archived-${item.createdAt}-${idx}`}
-                        className="flex items-center gap-2 p-3 border rounded-lg bg-amber-50"
-                      >
-                        <span className="font-medium">—</span>
-                        <ArrowRight className="text-gray-600" size={18} />
-                        <span className="font-medium">
-                          Evrak arşivlendi ({item.user?.fullName ?? "-"} tarafından)
-                        </span>
-                        <span className="text-xs text-gray-500 ml-auto">
-                          {formatDate(item.createdAt)}
-                        </span>
-                      </div>
-                    );
-                  }
-                  if (item.type === "UNARCHIVED") {
-                    return (
-                      <div
-                        key={`unarchived-${item.createdAt}-${idx}`}
-                        className="flex items-center gap-2 p-3 border rounded-lg bg-green-50"
-                      >
-                        <span className="font-medium">—</span>
-                        <ArrowRight className="text-gray-600" size={18} />
-                        <span className="font-medium">Evrak arşivden çıkarıldı</span>
-                        <span className="text-xs text-gray-500 ml-auto">
-                          {formatDate(item.createdAt)}
-                        </span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div
-                      key={item.id ?? `tx-${idx}`}
-                      className="flex items-center gap-2 p-3 border rounded-lg bg-gray-50"
-                    >
-                      <span className="font-medium">
-                        {item.fromUser?.fullName ?? "İlk Kayıt"}
-                      </span>
-                      <ArrowRight className="text-gray-600" size={18} />
-                      <span className="font-medium">
-                        {item.toUser?.fullName ?? "-"}
-                      </span>
-                      <span className="text-xs text-gray-500 ml-auto">
-                        {formatDate(item.createdAt)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              {timeline.length > 0 && <Timeline items={timeline} />}
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={showArchiveDialog}
+        onOpenChange={(open) => {
+          if (!open && !archiveLoading) {
+            setShowArchiveDialog(false);
+            setArchiveNote("");
+            setArchiveError("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Evrakı Arşivle</DialogTitle>
+            <DialogDescription>
+              Bu evrak arşivlenecek ve aktif zimmetlerden çıkarılacaktır.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Arşivleme Notu</label>
+            <textarea
+              value={archiveNote}
+              onChange={(e) => setArchiveNote(e.target.value)}
+              placeholder="Evrak neden arşivleniyor?"
+              className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={archiveLoading}
+            />
+            {archiveError && (
+              <p className="text-sm text-destructive">{archiveError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowArchiveDialog(false);
+                setArchiveNote("");
+                setArchiveError("");
+              }}
+              disabled={archiveLoading}
+            >
+              İptal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleArchiveConfirm}
+              disabled={archiveLoading}
+            >
+              {archiveLoading ? "Arşivleniyor..." : "Arşivle"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

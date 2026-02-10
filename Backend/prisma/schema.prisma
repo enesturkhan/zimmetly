@@ -25,6 +25,15 @@ enum DocumentStatus {
   ARCHIVED
 }
 
+enum DocumentActionType {
+  CREATE
+  SEND
+  ACCEPT
+  RETURN
+  ARCHIVE
+  UNARCHIVE
+}
+
 model User {
   id         String   @id // Supabase Auth user ID
   fullName   String
@@ -34,10 +43,11 @@ model User {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
-  sentTransactions     Transaction[] @relation("FromUser")
-  receivedTransactions Transaction[] @relation("ToUser")
-  holdingDocuments     Document[]    @relation("DocumentCurrentHolder")
-  archivedDocuments    Document[]    @relation("ArchivedBy")
+  sentTransactions     Transaction[]  @relation("FromUser")
+  receivedTransactions Transaction[]  @relation("ToUser")
+  holdingDocuments     Document[]     @relation("DocumentCurrentHolder")
+  archivedDocuments    Document[]     @relation("ArchivedBy")
+  documentNotes        DocumentNote[]
 }
 
 model Document {
@@ -53,8 +63,26 @@ model Document {
   archiveDepartment String?
   archiveNote       String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  notes     DocumentNote[]
+}
+
+model DocumentNote {
+  id              String            @id @default(uuid())
+  documentNumber  String
+  transactionId   String?
+  actionType      DocumentActionType
+  note            String
+  createdByUserId String
+  createdAt       DateTime          @default(now())
+
+  document    Document     @relation(fields: [documentNumber], references: [number])
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  createdBy   User         @relation(fields: [createdByUserId], references: [id])
+
+  @@index([documentNumber])
+  @@index([transactionId])
 }
 
 model Transaction {
@@ -66,8 +94,9 @@ model Transaction {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  fromUser User @relation("FromUser", fields: [fromUserId], references: [id])
-  toUser   User @relation("ToUser", fields: [toUserId], references: [id])
+  fromUser User          @relation("FromUser", fields: [fromUserId], references: [id])
+  toUser   User          @relation("ToUser", fields: [toUserId], references: [id])
+  notes    DocumentNote[]
 
   @@index([documentNumber])
   @@index([toUserId])

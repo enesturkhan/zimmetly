@@ -23,6 +23,7 @@ export default function ZimmetDetailPage() {
 
   // ---- FORM STATE ----
   const [docNumber, setDocNumber] = useState("");
+  const [zimmetNote, setZimmetNote] = useState("");
   const [users, setUsers] = useState<UserOption[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [userId, setUserId] = useState("");
@@ -193,10 +194,11 @@ export default function ZimmetDetailPage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          documentNumber: docNumber,
-          toUserId: finalUserId,
-        }),
+        body: JSON.stringify(
+          zimmetNote.trim()
+            ? { documentNumber: docNumber, toUserId: finalUserId, note: zimmetNote.trim() }
+            : { documentNumber: docNumber, toUserId: finalUserId },
+        ),
       });
 
       const data = await res.json();
@@ -211,6 +213,7 @@ export default function ZimmetDetailPage() {
       setUserId("");
       setUserSearch("");
       setDocNumber("");
+      setZimmetNote("");
     } finally {
       setIsLoading(false);
     }
@@ -296,6 +299,17 @@ export default function ZimmetDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Zimmet Notu (opsiyonel)</label>
+            <textarea
+              value={zimmetNote}
+              onChange={(e) => setZimmetNote(e.target.value)}
+              placeholder="İsteğe bağlı açıklama"
+              className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isLoading}
+            />
           </div>
 
           {/* ---- SUBMIT BUTTON ---- */}

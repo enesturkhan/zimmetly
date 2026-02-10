@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Loader2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -119,7 +120,9 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.message || "Kullanıcılar çekilemedi.");
+        setErrorMsg(
+          toUserFriendlyError(data?.message ?? "Kullanıcılar çekilemedi.")
+        );
         return;
       }
 
@@ -130,7 +133,7 @@ export default function AdminUsersPage() {
 
       setUsers(data);
     } catch (e) {
-      setErrorMsg("Sunucuya bağlanılamadı.");
+      setErrorMsg(getNetworkError());
     } finally {
       setIsUsersLoading(false);
     }
@@ -234,14 +237,16 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.message || "Silme/Pasif etme başarısız.");
+        setErrorMsg(
+          toUserFriendlyError(data?.message ?? "Silme/Pasif etme başarısız.")
+        );
         return;
       }
 
       // UI'da listeden kaldır (backend pasif ediyorsa bile admin listesi sadece aktifleri çekiyorsa zaten kaybolacak)
       setUsers((prev) => prev.filter((u) => u.id !== id));
     } catch {
-      setErrorMsg("Sunucuya bağlanılamadı.");
+      setErrorMsg(getNetworkError());
     } finally {
       setDeleteLoadingId(null);
     }
@@ -271,7 +276,9 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.message || "Durum güncelleme başarısız.");
+        setErrorMsg(
+          toUserFriendlyError(data?.message ?? "Durum güncelleme başarısız.")
+        );
         return;
       }
 
@@ -284,7 +291,7 @@ export default function AdminUsersPage() {
         )
       );
     } catch {
-      setErrorMsg("Sunucuya bağlanılamadı.");
+      setErrorMsg(getNetworkError());
     } finally {
       setToggleLoadingId(null);
     }

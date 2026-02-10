@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { Loader2, Archive, FileText } from "lucide-react";
+import { Loader2, Archive, FileText, ChevronDown, ChevronUp, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
+import { Timeline } from "@/components/Timeline";
 
 import {
   Card,
@@ -25,6 +27,12 @@ import {
 } from "@/components/ui/dialog";
 import { TimelineModal } from "@/components/TimelineModal";
 import type { TimelineEvent } from "@/components/Timeline";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /* ================= TYPES ================= */
 
@@ -59,6 +67,13 @@ type TxItem = {
     archivedByUserId?: string | null;
   };
   isActiveForMe?: boolean;
+};
+
+/** Evrak bazlı tek kart: documentNumber, en son tx ve tüm geçmiş (ASC). */
+type DocCard = {
+  documentNumber: string;
+  lastTx: TxItem;
+  history: TxItem[];
 };
 
 type UserOption = {
@@ -134,6 +149,9 @@ export default function GecmisimPage() {
   const [selectedTimeline, setSelectedTimeline] = useState<TimelineEvent[]>([]);
   const [timelineModalLoading, setTimelineModalLoading] = useState(false);
   const [contentVisible, setContentVisible] = useState(false);
+  const [expandedDocNumber, setExpandedDocNumber] = useState<string | null>(null);
+  const [timelineByDoc, setTimelineByDoc] = useState<Record<string, TimelineEvent[]>>({});
+  const [loadingTimelineDoc, setLoadingTimelineDoc] = useState<string | null>(null);
 
   /* ================= AUTH ================= */
 
@@ -167,7 +185,9 @@ export default function GecmisimPage() {
       if (!res.ok) throw new Error(data.message);
       setItems(data || []);
     } catch (e: any) {
-      setError(e.message || "Veri alınamadı");
+      setError(
+        e?.message ? toUserFriendlyError(e.message) : getNetworkError()
+      );
     } finally {
       setLoading(false);
     }
@@ -193,31 +213,83 @@ export default function GecmisimPage() {
       .catch(() => { });
   }, [getToken, me]);
 
-  /* ================= GROUPING ================= */
+  /* ================= GROUPING (evrak bazlı tek kart) ================= */
 
-  const incomingPending = useMemo(
+  const byDocumentNumber = useMemo(() => {
+    const map = new Map<string, TxItem[]>();
+    for (const tx of items) {
+      const list = map.get(tx.documentNumber) ?? [];
+      list.push(tx);
+      map.set(tx.documentNumber, list);
+    }
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    }
+    return map;
+  }, [items]);
+
+  const allDocCards = useMemo(() => {
+    return Array.from(byDocumentNumber.entries()).map(
+      ([documentNumber, history]) => {
+        const lastTx = history[history.length - 1]!;
+        return { documentNumber, lastTx, history };
+      }
+    );
+  }, [byDocumentNumber]);
+
+  const incomingPendingDocs = useMemo(
     () =>
-      items.filter(
-        (t) => t.toUserId === me?.id && t.status === "PENDING"
+      allDocCards.filter(
+        (d) =>
+          d.lastTx.toUserId === me?.id && d.lastTx.status === "PENDING"
       ),
-    [items, me]
+    [allDocCards, me]
   );
 
-  const acceptedByMe = useMemo(
+  const acceptedByMeDocs = useMemo(
     () =>
-      items.filter(
-        (t) =>
-          t.toUserId === me?.id &&
-          t.status === "ACCEPTED" &&
-          t.isActiveForMe === true
+      allDocCards.filter(
+        (d) =>
+          d.lastTx.toUserId === me?.id &&
+          d.lastTx.status === "ACCEPTED" &&
+          d.lastTx.isActiveForMe === true
       ),
-    [items, me]
+    [allDocCards, me]
   );
 
-  const sentByMe = useMemo(
-    () => items.filter((t) => t.fromUserId === me?.id),
-    [items, me]
+  const sentByMeDocs = useMemo(
+    () => allDocCards.filter((d) => d.lastTx.fromUserId === me?.id),
+    [allDocCards, me]
   );
+
+  useEffect(() => {
+    if (!expandedDocNumber) return;
+    if (timelineByDoc[expandedDocNumber]) return;
+
+    let cancelled = false;
+    setLoadingTimelineDoc(expandedDocNumber);
+    fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/transactions/document/${expandedDocNumber}`,
+      { headers: { Authorization: `Bearer ${getToken()}` } }
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled)
+          setTimelineByDoc((prev) => ({
+            ...prev,
+            [expandedDocNumber]: Array.isArray(data) ? data : [],
+          }));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTimelineDoc(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedDocNumber]);
 
   /* ================= ACTION ================= */
 
@@ -234,7 +306,7 @@ export default function GecmisimPage() {
       if (!res.ok) throw new Error(data.message);
       fetchMine();
     } catch (e: any) {
-      setError(e.message);
+      setError(toUserFriendlyError(e?.message));
     } finally {
       setActionLoading(null);
     }
@@ -258,13 +330,15 @@ export default function GecmisimPage() {
 
   const archiveBadgeText = (tx: TxItem) =>
     tx.document?.status === "ARCHIVED"
-      ? "Arşivlendi"
+      ? "Arşivli"
       : statusLabelTR(tx.status);
 
   const archiveBadgeVariant = (tx: TxItem) =>
     tx.document?.status === "ARCHIVED"
       ? "secondary"
       : statusVariant(tx.status);
+
+  const isArchivedCard = (tx: TxItem) => tx.document?.status === "ARCHIVED";
 
   const openTimelineModal = async (docNumber: string) => {
     setSelectedDocumentNumber(docNumber);
@@ -369,93 +443,187 @@ export default function GecmisimPage() {
 
   const Section = ({
     title,
-    items,
+    docCards,
     children,
   }: {
     title: string;
-    items: TxItem[];
-    children?: (tx: TxItem) => React.ReactNode;
+    docCards: DocCard[];
+    children?: (docCard: DocCard) => React.ReactNode;
   }) => (
     <Card className="rounded-xl border shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="font-semibold">{title}</CardTitle>
         <Badge variant="secondary" className="shrink-0">
-          {items.length}
+          {docCards.length}
         </Badge>
       </CardHeader>
       <CardContent className="space-y-3">
-        {items.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+        {docCards.length === 0 && (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10">
             <FileText className="h-10 w-10 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">Bu alanda kayıt yok</p>
+            <p className="text-xs text-muted-foreground">
+              Bu bölümde henüz kayıt bulunmuyor
+            </p>
           </div>
         )}
-        {items.map((tx) => (
-          <div
-            key={tx.id}
-            className="cursor-pointer rounded-lg border p-3 space-y-1 transition-colors hover:bg-muted/30"
-          >
-            <div className="flex justify-between">
-              <p className="font-medium">
-                Evrak No:{" "}
-                <button
-                  type="button"
-                  onClick={() => openTimelineModal(tx.documentNumber)}
-                  className="cursor-pointer underline-offset-2 transition-colors hover:underline text-left"
-                >
-                  {tx.documentNumber}
-                </button>
-              </p>
-              <Badge variant={archiveBadgeVariant(tx)} className="cursor-pointer transition-colors shrink-0">
-                {archiveBadgeText(tx)}
-              </Badge>
+        {docCards.map((docCard) => {
+          const tx = docCard.lastTx;
+          const isExpanded = expandedDocNumber === docCard.documentNumber;
+          const timeline = timelineByDoc[docCard.documentNumber];
+          const loadingTimeline = loadingTimelineDoc === docCard.documentNumber;
+
+          const isArchived = isArchivedCard(tx);
+
+          return (
+            <div
+              key={docCard.documentNumber}
+              className={cn(
+                "rounded-lg border overflow-hidden transition-colors hover:bg-muted/30",
+                isArchived && "bg-amber-50/40 border-amber-200/50"
+              )}
+            >
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() =>
+                  setExpandedDocNumber((prev) =>
+                    prev === docCard.documentNumber
+                      ? null
+                      : docCard.documentNumber
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setExpandedDocNumber((prev) =>
+                      prev === docCard.documentNumber
+                        ? null
+                        : docCard.documentNumber
+                    );
+                  }
+                }}
+                className="cursor-pointer p-3 space-y-1"
+              >
+                <div className="flex justify-between items-start gap-2">
+                  <p className="font-medium flex items-center gap-1.5">
+                    {isArchived && (
+                      <Lock
+                        className="h-4 w-4 shrink-0 text-amber-600"
+                        aria-hidden
+                      />
+                    )}
+                    <span>
+                      Evrak No:{" "}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openTimelineModal(docCard.documentNumber);
+                        }}
+                        className="cursor-pointer underline-offset-2 transition-colors hover:underline text-left"
+                      >
+                        {docCard.documentNumber}
+                      </button>
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge
+                      variant={archiveBadgeVariant(tx)}
+                      className={cn(
+                        "cursor-pointer transition-colors",
+                        isArchived &&
+                          "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100"
+                      )}
+                    >
+                      {archiveBadgeText(tx)}
+                    </Badge>
+                    {isExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {formatDateTR(tx.createdAt)}
+                </div>
+                <div className="text-sm">
+                  <b>Kimden:</b> {tx.fromUser?.fullName}
+                </div>
+                <div className="text-sm">
+                  <b>Kime:</b> {tx.toUser?.fullName}
+                </div>
+                {children && (
+                  <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                    {children(docCard)}
+                  </div>
+                )}
+              </div>
+              {isExpanded && (
+                <div className="border-t bg-muted/20 px-3 py-3 sm:px-4">
+                  {loadingTimeline && (
+                    <Timeline items={[]} loading className="text-sm" />
+                  )}
+                  {!loadingTimeline && timeline && timeline.length > 0 && (
+                    <Timeline items={timeline} className="text-sm" />
+                  )}
+                  {!loadingTimeline &&
+                    timeline &&
+                    timeline.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Bu evrak için hareket kaydı yok.
+                      </p>
+                    )}
+                </div>
+              )}
             </div>
-            <div className="text-xs text-muted-foreground">
-              {formatDateTR(tx.createdAt)}
-            </div>
-            <div className="text-sm">
-              <b>Kimden:</b> {tx.fromUser?.fullName}
-            </div>
-            <div className="text-sm">
-              <b>Kime:</b> {tx.toUser?.fullName}
-            </div>
-            {children && <div className="pt-2">{children(tx)}</div>}
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
 
   return (
     <div className="min-h-screen bg-background">
-      {loading && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
-          <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
-        </div>
-      )}
-
       <main
         className={cn(
           "mx-auto max-w-7xl space-y-8 px-6 py-8 transition-all duration-300",
-          loading && "opacity-50 blur-sm pointer-events-none",
           !loading && (contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2")
         )}
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold">Geçmişim</h1>
-            <p className="text-sm text-muted-foreground">Tüm zimmet hareketlerin</p>
+            {loading ? (
+              <>
+                <Skeleton className="h-7 w-32 rounded-md" />
+                <Skeleton className="mt-1 h-4 w-48 rounded-md" />
+              </>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold">Geçmişim</h1>
+                <p className="text-sm text-muted-foreground">Tüm zimmet hareketlerin</p>
+              </>
+            )}
           </div>
           <Button
             variant="outline"
             size="sm"
             className="cursor-pointer"
             onClick={() => router.push("/dashboard")}
+            aria-label="Dashboard sayfasına git"
+            disabled={loading}
           >
             Dashboard
           </Button>
         </div>
+
+        {loading && (
+          <div className="space-y-4">
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+          </div>
+        )}
 
         {error && (
           <Alert variant="destructive" className="rounded-lg">
@@ -463,101 +631,182 @@ export default function GecmisimPage() {
           </Alert>
         )}
 
-        <Section title="Bana Gelen (Beklemede)" items={incomingPending}>
-          {(tx) => (
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="cursor-pointer"
-                onClick={() => runAction(tx, "accept")}
-                disabled={actionLoading === tx.id}
-              >
-                {actionLoading === tx.id ? "Kabul ediliyor…" : "Kabul"}
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="cursor-pointer"
-                onClick={() => runAction(tx, "reject")}
-                disabled={actionLoading === tx.id}
-              >
-                {actionLoading === tx.id ? "Reddediliyor…" : "Red"}
-              </Button>
-            </div>
-          )}
-        </Section>
+        {!loading && items.length === 0 && (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center rounded-xl border border-border bg-muted/20">
+            <FileText className="h-12 w-12 text-muted-foreground/50" />
+            <p className="text-base text-muted-foreground">
+              Henüz sana ait bir evrak işlemi yok
+            </p>
+          </div>
+        )}
 
-        <Section title="Kabul Ettiklerim (Bende)" items={acceptedByMe}>
-          {(tx) => {
-            const isArchived = tx.document?.status === "ARCHIVED";
-            const canArchive = canManageTx(tx);
+        {!loading && items.length > 0 && (
+          <>
+            <Section title="Bana Gelen (Beklemede)" docCards={incomingPendingDocs}>
+              {(docCard) => {
+                const tx = docCard.lastTx;
+                const archived = isArchivedCard(tx);
+                if (archived) return null;
+                const loading = actionLoading === tx.id;
+                const acceptBtn = (
+                  <Button
+                    size="sm"
+                    className="cursor-pointer min-w-[7.5rem]"
+                    onClick={() => runAction(tx, "accept")}
+                    disabled={loading}
+                    tabIndex={loading ? -1 : 0}
+                    aria-label="Kabul et"
+                  >
+                    {loading ? "Kabul ediliyor…" : "Kabul"}
+                  </Button>
+                );
+                const rejectBtn = (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="cursor-pointer min-w-[5rem]"
+                    onClick={() => runAction(tx, "reject")}
+                    disabled={loading}
+                    tabIndex={loading ? -1 : 0}
+                    aria-label="Reddet"
+                  >
+                    {loading ? "Reddediliyor…" : "Red"}
+                  </Button>
+                );
+                return (
+                  <div className="flex gap-2">
+                    {loading ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">{acceptBtn}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>İşlem devam ediyor</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      acceptBtn
+                    )}
+                    {loading ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">{rejectBtn}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>İşlem devam ediyor</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      rejectBtn
+                    )}
+                  </div>
+                );
+              }}
+            </Section>
 
-            if (isArchived) {
-              return (
-                <Button
-                  size="sm"
-                  className="cursor-pointer"
-                  onClick={() => {
-                    setAssignTx(tx);
-                    setAssignUserId("");
-                    setAssignNote("");
-                    setAssignError("");
-                  }}
-                >
-                  Başkasına Zimmetle
-                </Button>
-              );
-            }
+            <Section title="Kabul Ettiklerim (Bende)" docCards={acceptedByMeDocs}>
+              {(docCard) => {
+                const tx = docCard.lastTx;
+                const isArchived = tx.document?.status === "ARCHIVED";
+                const canArchive = canManageTx(tx);
 
-            return (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="cursor-pointer"
-                  onClick={() => {
-                    setReturnTx(tx);
-                    setReturnNote("");
-                    setReturnError("");
-                  }}
-                  disabled={returnLoading}
-                >
-                  {returnLoading ? "İade ediliyor…" : "İade Et"}
-                </Button>
-                <Button
-                  size="sm"
-                  className="cursor-pointer"
-                  onClick={() => {
-                    setAssignTx(tx);
-                    setAssignUserId("");
-                    setAssignNote("");
-                    setAssignError("");
-                  }}
-                >
-                  Başkasına Zimmetle
-                </Button>
-                {canArchive && (
+                if (isArchived) {
+                  return (
+                    <Button
+                      size="sm"
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setAssignTx(tx);
+                        setAssignUserId("");
+                        setAssignNote("");
+                        setAssignError("");
+                      }}
+                      aria-label="Başkasına zimmetle"
+                    >
+                      Başkasına Zimmetle
+                    </Button>
+                  );
+                }
+
+                const returnBtn = (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="cursor-pointer min-w-[8rem]"
+                    onClick={() => {
+                      setReturnTx(tx);
+                      setReturnNote("");
+                      setReturnError("");
+                    }}
+                    disabled={returnLoading}
+                    tabIndex={returnLoading ? -1 : 0}
+                    aria-label="İade et"
+                  >
+                    {returnLoading ? "İade ediliyor…" : "İade Et"}
+                  </Button>
+                );
+                const assignBtn = (
+                  <Button
+                    size="sm"
+                    className="cursor-pointer min-w-[10rem]"
+                    onClick={() => {
+                      setAssignTx(tx);
+                      setAssignUserId("");
+                      setAssignNote("");
+                      setAssignError("");
+                    }}
+                    aria-label="Başkasına zimmetle"
+                  >
+                    Başkasına Zimmetle
+                  </Button>
+                );
+                const archiveBtn = canArchive && (
                   <Button
                     size="sm"
                     variant="secondary"
-                    className="cursor-pointer"
+                    className="cursor-pointer min-w-[8.5rem]"
                     onClick={() => {
                       setArchiveTx(tx);
                       setArchiveNote("");
                       setArchiveError("");
                     }}
                     disabled={archiveLoading}
+                    tabIndex={archiveLoading ? -1 : 0}
+                    aria-label="Arşivle"
                   >
-                    <Archive className="mr-2 h-4 w-4" />
+                    <Archive className="mr-2 h-4 w-4" aria-hidden />
                     {archiveLoading ? "Arşivleniyor…" : "Arşivle"}
                   </Button>
-                )}
-              </div>
-            );
-          }}
-        </Section>
+                );
 
-        <Section title="Gönderdiklerim" items={sentByMe} />
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    {returnLoading ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">{returnBtn}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>İşlem devam ediyor</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      returnBtn
+                    )}
+                    {assignBtn}
+                    {archiveBtn &&
+                      (archiveLoading ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">{archiveBtn}</span>
+                          </TooltipTrigger>
+                          <TooltipContent>İşlem devam ediyor</TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        archiveBtn
+                      ))}
+                  </div>
+                );
+              }}
+            </Section>
+
+            <Section title="Gönderdiklerim" docCards={sentByMeDocs} />
+          </>
+        )}
       </main>
 
       <Dialog

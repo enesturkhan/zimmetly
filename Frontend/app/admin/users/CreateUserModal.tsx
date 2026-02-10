@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 
 import {
   Dialog,
@@ -66,7 +67,9 @@ export default function CreateUserModal({
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message || "Kullanıcı oluşturulamadı");
+        setError(
+          toUserFriendlyError(data?.message ?? "Kullanıcı oluşturulamadı")
+        );
         return;
       }
 
@@ -78,6 +81,8 @@ export default function CreateUserModal({
         role: "USER",
         password: "",
       });
+    } catch {
+      setError(getNetworkError());
     } finally {
       setLoading(false);
     }

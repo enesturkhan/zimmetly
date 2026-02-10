@@ -4,6 +4,7 @@ import { useState, FormEvent, KeyboardEvent, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,9 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.message || "Giriş başarısız.");
+        setErrorMsg(
+          toUserFriendlyError(data?.message ?? "Giriş başarısız.")
+        );
         setIsLoading(false);
         return;
       }
@@ -68,7 +71,7 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (error) {
       console.error(error);
-      setErrorMsg("Sunucuya bağlanırken hata oluştu.");
+      setErrorMsg(getNetworkError());
       setIsLoading(false);
     }
   };

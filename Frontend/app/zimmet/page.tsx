@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -204,7 +205,9 @@ export default function ZimmetDetailPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.message || "Zimmet oluşturulamadı.");
+        setErrorMsg(
+          toUserFriendlyError(data?.message ?? "Zimmet oluşturulamadı.")
+        );
         return;
       }
 
@@ -214,6 +217,8 @@ export default function ZimmetDetailPage() {
       setUserSearch("");
       setDocNumber("");
       setZimmetNote("");
+    } catch {
+      setErrorMsg(getNetworkError());
     } finally {
       setIsLoading(false);
     }

@@ -10,8 +10,9 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { type AuthState } from "@/store/authStore";
 
-import { Search, Send, History, FileText, Loader2 } from "lucide-react";
+import { Search, Send, History, FileText, Loader2, FileX } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,7 @@ export default function DashboardPage() {
   const [openTimeline, setOpenTimeline] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState("");
+  const [searchNotFound, setSearchNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // ---- ZİMMET FORMU ----
@@ -217,6 +219,8 @@ export default function DashboardPage() {
     setErrorMsg("");
     setDocResult(null);
     setTimeline([]);
+    setErrorMsg("");
+    setSearchNotFound(false);
 
     if (!docNumber) {
       setErrorMsg("Evrak numarası giriniz.");
@@ -236,10 +240,14 @@ export default function DashboardPage() {
       const docData = await docRes.json();
 
       if (!docRes.ok) {
-        setErrorMsg(docData.message || "Evrak bulunamadı.");
+        setSearchNotFound(true);
+        setErrorMsg(
+          toUserFriendlyError(docData?.message ?? "Evrak bulunamadı.")
+        );
         return;
       }
 
+      setSearchNotFound(false);
       setDocResult(docData);
       setZimmetNumber(docData.number); // bulunan evrak → zimmet numarasına yaz
 
@@ -252,8 +260,9 @@ export default function DashboardPage() {
 
       const txData = await txRes.json();
       setTimeline(Array.isArray(txData) ? txData : []);
-    } catch {
-      setErrorMsg("Bir hata oluştu.");
+    } catch (e) {
+      setSearchNotFound(false);
+      setErrorMsg(getNetworkError());
     } finally {
       setIsLoading(false);
       setTimelineLoading(false);
@@ -300,7 +309,9 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setZimmetError(data.message || "Zimmet işlemi başarısız.");
+        setZimmetError(
+          toUserFriendlyError(data?.message ?? "Zimmet işlemi başarısız.")
+        );
         return;
       }
 
@@ -319,6 +330,8 @@ export default function DashboardPage() {
         const txData = await txRes.json();
         setTimeline(Array.isArray(txData) ? txData : []);
       }
+    } catch {
+      setZimmetError(getNetworkError());
     } finally {
       setIsZimmetLoading(false);
     }
@@ -412,13 +425,24 @@ export default function DashboardPage() {
             Zimmetly
           </h1>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{user.fullName}</span>
+            <span className="text-sm text-muted-foreground flex items-center gap-2">
+              {user.fullName}
+              {user.role === "ADMIN" && (
+                <Badge
+                  variant="outline"
+                  className="text-xs font-normal text-muted-foreground border-muted"
+                >
+                  Admin
+                </Badge>
+              )}
+            </span>
             {user.role === "ADMIN" && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="cursor-pointer text-sm"
                 onClick={() => router.push("/admin/users")}
+                aria-label="Kullanıcı Yönetimi"
               >
                 Kullanıcı Yönetimi
               </Button>
@@ -523,10 +547,19 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            {errorMsg && (
+            {errorMsg && !searchNotFound && (
               <Alert variant="destructive" className="rounded-lg">
                 <AlertDescription>{errorMsg}</AlertDescription>
               </Alert>
+            )}
+
+            {searchNotFound && (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-muted/20 py-10 text-center">
+                <FileX className="h-12 w-12 text-muted-foreground" />
+                <p className="text-base text-muted-foreground">
+                  Bu numaraya ait evrak bulunamadı
+                </p>
+              </div>
             )}
 
             {docResult && (
@@ -575,10 +608,10 @@ export default function DashboardPage() {
                   )}
 
                   {!timelineLoading && timeline.length === 0 && docResult.status !== "ARCHIVED" && (
-                    <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2 py-6 text-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10">
                       <FileText className="h-10 w-10 text-muted-foreground/50" />
                       <p className="text-sm text-muted-foreground">
-                        Henüz işlem yok
+                        Bu evrak için henüz bir işlem yapılmamış
                       </p>
                     </div>
                   )}

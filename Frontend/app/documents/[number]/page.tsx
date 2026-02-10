@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { FileText, Archive } from "lucide-react";
+import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 import { Timeline } from "@/components/Timeline";
 import {
   Dialog,
@@ -100,6 +101,7 @@ export default function DocumentDetailPage() {
       setLoading(true);
       setErrorMsg("");
 
+      try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/documents/${number}`,
         {
@@ -110,7 +112,9 @@ export default function DocumentDetailPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(json.message || "Evrak bulunamadı.");
+        setErrorMsg(
+          toUserFriendlyError(json?.message ?? "Evrak bulunamadı.")
+        );
         setLoading(false);
         return;
       }
@@ -127,7 +131,11 @@ export default function DocumentDetailPage() {
       );
       const txData = await txRes.json();
       setTimeline(Array.isArray(txData) ? txData : []);
+    } catch {
+      setErrorMsg(getNetworkError());
+    } finally {
       setLoading(false);
+    }
     }
 
     loadDocument();

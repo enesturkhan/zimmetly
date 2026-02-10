@@ -36,28 +36,25 @@ export function TimelineModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-2xl max-h-[80vh] flex flex-col gap-0 p-0"
+        className="max-w-[calc(100vw-1rem)] max-h-[80vh] flex flex-col gap-0 p-0 sm:max-w-2xl"
         showCloseButton={true}
       >
-        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+        <DialogHeader className="px-4 pt-4 pb-2 shrink-0 sm:px-6 sm:pt-6">
           <DialogTitle>Evrak Geçmişi – {documentNumber}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-2">
-          {loading && (
-            <p className="text-sm text-muted-foreground">Yükleniyor...</p>
-          )}
+        <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto px-4 py-2 scroll-area-timeline sm:px-6">
           {!loading && items.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Bu evrak için hareket bulunmuyor.
             </p>
           )}
-          {!loading && items.length > 0 && (
-            <Timeline items={items} className="pb-2" />
+          {(loading || items.length > 0) && (
+            <Timeline items={items} loading={loading} className="pb-2" />
           )}
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t shrink-0 gap-2 sm:gap-0">
+        <DialogFooter className="px-4 py-4 border-t shrink-0 gap-2 sm:px-6 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Kapat
           </Button>

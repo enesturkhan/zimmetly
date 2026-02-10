@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { Loader2, Archive } from "lucide-react";
+import { Loader2, Archive, FileText } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import {
   Card,
@@ -132,6 +133,7 @@ export default function GecmisimPage() {
   const [selectedDocumentNumber, setSelectedDocumentNumber] = useState<string | null>(null);
   const [selectedTimeline, setSelectedTimeline] = useState<TimelineEvent[]>([]);
   const [timelineModalLoading, setTimelineModalLoading] = useState(false);
+  const [contentVisible, setContentVisible] = useState(false);
 
   /* ================= AUTH ================= */
 
@@ -174,6 +176,10 @@ export default function GecmisimPage() {
   useEffect(() => {
     if (me) fetchMine();
   }, [me]);
+
+  useEffect(() => {
+    if (me && !loading) setContentVisible(true);
+  }, [me, loading]);
 
   useEffect(() => {
     const token = getToken();
@@ -236,7 +242,14 @@ export default function GecmisimPage() {
 
   /* ================= UI ================= */
 
-  if (!me) return <div className="p-6">Yükleniyor...</div>;
+  if (!me) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
+        <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
+      </div>
+    );
+  }
 
   const canManageTx = (tx: TxItem) =>
     tx.status === "ACCEPTED" &&
@@ -363,18 +376,24 @@ export default function GecmisimPage() {
     items: TxItem[];
     children?: (tx: TxItem) => React.ReactNode;
   }) => (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+    <Card className="rounded-xl border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="font-semibold">{title}</CardTitle>
+        <Badge variant="secondary" className="shrink-0">
+          {items.length}
+        </Badge>
       </CardHeader>
       <CardContent className="space-y-3">
         {items.length === 0 && (
-          <p className="text-sm text-muted-foreground">Kayıt yok</p>
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+            <FileText className="h-10 w-10 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">Bu alanda kayıt yok</p>
+          </div>
         )}
         {items.map((tx) => (
           <div
             key={tx.id}
-            className="border rounded p-3 space-y-1"
+            className="cursor-pointer rounded-lg border p-3 space-y-1 transition-colors hover:bg-muted/30"
           >
             <div className="flex justify-between">
               <p className="font-medium">
@@ -382,12 +401,12 @@ export default function GecmisimPage() {
                 <button
                   type="button"
                   onClick={() => openTimelineModal(tx.documentNumber)}
-                  className="cursor-pointer underline-offset-2 hover:underline transition-colors text-left"
+                  className="cursor-pointer underline-offset-2 transition-colors hover:underline text-left"
                 >
                   {tx.documentNumber}
                 </button>
               </p>
-              <Badge variant={archiveBadgeVariant(tx)} className="cursor-pointer transition-colors">
+              <Badge variant={archiveBadgeVariant(tx)} className="cursor-pointer transition-colors shrink-0">
                 {archiveBadgeText(tx)}
               </Badge>
             </div>
@@ -408,113 +427,138 @@ export default function GecmisimPage() {
   );
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">Geçmişim</h2>
-          <p className="text-sm text-muted-foreground">{me.fullName}</p>
-        </div>
-        <Button variant="outline" onClick={() => router.push("/dashboard")}>
-          Dashboard
-        </Button>
-      </div>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
+    <div className="min-h-screen bg-background">
       {loading && (
-        <div className="flex justify-center">
-          <Loader2 className="animate-spin" />
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
+          <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
         </div>
       )}
 
-      <Section title="📥 Bana Gelen (Beklemede)" items={incomingPending}>
-        {(tx) => (
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => runAction(tx, "accept")}>
-              Kabul
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => runAction(tx, "reject")}
-            >
-              Red
-            </Button>
-          </div>
+      <main
+        className={cn(
+          "mx-auto max-w-7xl space-y-8 px-6 py-8 transition-all duration-300",
+          loading && "opacity-50 blur-sm pointer-events-none",
+          !loading && (contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2")
         )}
-      </Section>
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold">Geçmişim</h1>
+            <p className="text-sm text-muted-foreground">Tüm zimmet hareketlerin</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="cursor-pointer"
+            onClick={() => router.push("/dashboard")}
+          >
+            Dashboard
+          </Button>
+        </div>
 
-      <Section title="📂 Kabul Ettiklerim (Bende)" items={acceptedByMe}>
-        {(tx) => {
-          const isArchived = tx.document?.status === "ARCHIVED";
-          const canArchive = canManageTx(tx);
+        {error && (
+          <Alert variant="destructive" className="rounded-lg">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          if (isArchived) {
-            return (
+        <Section title="Bana Gelen (Beklemede)" items={incomingPending}>
+          {(tx) => (
+            <div className="flex gap-2">
               <Button
                 size="sm"
-                onClick={() => {
-                  setAssignTx(tx);
-                  setAssignUserId("");
-                  setAssignNote("");
-                  setAssignError("");
-                }}
+                className="cursor-pointer"
+                onClick={() => runAction(tx, "accept")}
+                disabled={actionLoading === tx.id}
               >
-                Başkasına Zimmetle
-              </Button>
-            );
-          }
-
-          return (
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setReturnTx(tx);
-                  setReturnNote("");
-                  setReturnError("");
-                }}
-                disabled={returnLoading}
-              >
-                İade Et
+                {actionLoading === tx.id ? "Kabul ediliyor…" : "Kabul"}
               </Button>
               <Button
                 size="sm"
-                onClick={() => {
-                  setAssignTx(tx);
-                  setAssignUserId("");
-                  setAssignNote("");
-                  setAssignError("");
-                }}
+                variant="destructive"
+                className="cursor-pointer"
+                onClick={() => runAction(tx, "reject")}
+                disabled={actionLoading === tx.id}
               >
-                Başkasına Zimmetle
+                {actionLoading === tx.id ? "Reddediliyor…" : "Red"}
               </Button>
-              {canArchive && (
+            </div>
+          )}
+        </Section>
+
+        <Section title="Kabul Ettiklerim (Bende)" items={acceptedByMe}>
+          {(tx) => {
+            const isArchived = tx.document?.status === "ARCHIVED";
+            const canArchive = canManageTx(tx);
+
+            if (isArchived) {
+              return (
                 <Button
                   size="sm"
-                  variant="secondary"
+                  className="cursor-pointer"
                   onClick={() => {
-                    setArchiveTx(tx);
-                    setArchiveNote("");
-                    setArchiveError("");
+                    setAssignTx(tx);
+                    setAssignUserId("");
+                    setAssignNote("");
+                    setAssignError("");
                   }}
-                  disabled={archiveLoading}
                 >
-                  <Archive className="mr-2 h-4 w-4" />
-                  Arşivle
+                  Başkasına Zimmetle
                 </Button>
-              )}
-            </div>
-          );
-        }}
-      </Section>
+              );
+            }
 
-      <Section title="📤 Gönderdiklerim" items={sentByMe} />
+            return (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="cursor-pointer"
+                  onClick={() => {
+                    setReturnTx(tx);
+                    setReturnNote("");
+                    setReturnError("");
+                  }}
+                  disabled={returnLoading}
+                >
+                  {returnLoading ? "İade ediliyor…" : "İade Et"}
+                </Button>
+                <Button
+                  size="sm"
+                  className="cursor-pointer"
+                  onClick={() => {
+                    setAssignTx(tx);
+                    setAssignUserId("");
+                    setAssignNote("");
+                    setAssignError("");
+                  }}
+                >
+                  Başkasına Zimmetle
+                </Button>
+                {canArchive && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setArchiveTx(tx);
+                      setArchiveNote("");
+                      setArchiveError("");
+                    }}
+                    disabled={archiveLoading}
+                  >
+                    <Archive className="mr-2 h-4 w-4" />
+                    {archiveLoading ? "Arşivleniyor…" : "Arşivle"}
+                  </Button>
+                )}
+              </div>
+            );
+          }}
+        </Section>
+
+        <Section title="Gönderdiklerim" items={sentByMe} />
+      </main>
 
       <Dialog
         open={!!archiveTx}

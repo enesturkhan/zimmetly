@@ -70,10 +70,10 @@ export function Timeline({ items, className }: TimelineProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative z-0", className)}>
       {/* Dikey çizgi */}
       <div
-        className="absolute left-[11px] top-2 bottom-2 w-px bg-border"
+        className="absolute left-[11px] top-2 bottom-2 z-0 w-px bg-border"
         aria-hidden
       />
 
@@ -91,7 +91,7 @@ export function Timeline({ items, className }: TimelineProps) {
                 >
                   <ArrowRight className="h-3.5 w-3.5" />
                 </div>
-                <div className="min-w-0 flex-1 rounded-md border border-border bg-muted/30 px-3 py-2 cursor-pointer transition-colors hover:bg-muted/50">
+                <div className="relative z-10 min-w-0 flex-1 rounded-md border border-border bg-muted/30 px-3 py-2 cursor-pointer transition-colors hover:bg-muted/50">
                   <p className="text-sm font-medium text-foreground">{title}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {formatDate(date)}
@@ -126,7 +126,7 @@ export function Timeline({ items, className }: TimelineProps) {
                 >
                   <Archive className="h-3.5 w-3.5" />
                 </div>
-                <div className="min-w-0 flex-1 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 cursor-pointer transition-colors hover:bg-amber-100/80">
+                <div className="relative z-10 min-w-0 flex-1 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 cursor-pointer transition-colors hover:bg-amber-100/80">
                   <p className="text-sm font-medium text-amber-900">{title}</p>
                   <p className="mt-0.5 text-xs text-amber-700/80">
                     {formatDate(date)}
@@ -153,7 +153,7 @@ export function Timeline({ items, className }: TimelineProps) {
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                 </div>
-                <div className="min-w-0 flex-1 rounded-md border border-green-200 bg-green-50/80 px-3 py-2 cursor-pointer transition-colors hover:bg-green-100/80">
+                <div className="relative z-10 min-w-0 flex-1 rounded-md border border-green-200 bg-green-50/80 px-3 py-2 cursor-pointer transition-colors hover:bg-green-100/80">
                   <p className="text-sm font-medium text-green-900">{title}</p>
                   <p className="mt-0.5 text-xs text-green-700/80">
                     {formatDate(date)}

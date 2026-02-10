@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { type AuthState } from "@/store/authStore";
 
+import { Search, Send, History, FileText, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -106,7 +108,6 @@ export default function DashboardPage() {
 
   // ---- ZİMMET FORMU ----
   const [zimmetNumber, setZimmetNumber] = useState("");
-  const [zimmetNote, setZimmetNote] = useState("");
   const [zimmetError, setZimmetError] = useState("");
   const [zimmetMessage, setZimmetMessage] = useState("");
   const [isZimmetLoading, setIsZimmetLoading] = useState(false);
@@ -120,6 +121,7 @@ export default function DashboardPage() {
   const [highlightIndex, setHighlightIndex] = useState(0);
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const evrakInputRef = useRef<HTMLDivElement | null>(null);
 
   /* ================= AUTH ================= */
 
@@ -288,11 +290,10 @@ export default function DashboardPage() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(
-            zimmetNote.trim()
-              ? { documentNumber: zimmetNumber, toUserId: finalUserId, note: zimmetNote.trim() }
-              : { documentNumber: zimmetNumber, toUserId: finalUserId },
-          ),
+          body: JSON.stringify({
+            documentNumber: zimmetNumber,
+            toUserId: finalUserId,
+          }),
         }
       );
 
@@ -308,7 +309,6 @@ export default function DashboardPage() {
       setZimmetUserId("");
       setZimmetUserSearch("");
       setZimmetNumber("");
-      setZimmetNote("");
 
       // Timeline'ı yenile
       if (docResult) {
@@ -370,275 +370,344 @@ export default function DashboardPage() {
     }
   };
 
-  if (!user) return <p className="p-6">Yükleniyor...</p>;
+  const [contentVisible, setContentVisible] = useState(false);
+  useEffect(() => {
+    if (user) setContentVisible(true);
+  }, [user]);
+
+  if (!user) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
+        <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
+      </div>
+    );
+  }
 
   const lastAccepted = [...timeline]
     .filter((t) => t.type === "TRANSACTION")
     .reverse()
     .find((t) => t.status === "ACCEPTED");
 
+  const scrollToEvrakSorgula = () => {
+    document.getElementById("evrak-sorgula")?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      const input = evrakInputRef.current?.querySelector("input");
+      (input as HTMLInputElement | null)?.focus();
+    }, 150);
+  };
+
   return (
-    <div className="min-h-screen p-6 max-w-3xl mx-auto space-y-6">
-      {/* HEADER */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">
-          Hoşgeldiniz, {user.fullName}
-        </h2>
-        <Button
-          variant="destructive"
-          disabled={logoutLoading}
-          onClick={() => {
-            setLogoutLoading(true);
-            logout();
-            router.push("/login");
-          }}
-        >
-          Çıkış Yap
-        </Button>
-      </div>
-
-      {/* MENU */}
-      <div className="flex gap-3 items-center">
-        <Button onClick={() => router.push("/zimmet")}>
-          Zimmet Yap (Detaylı)
-        </Button>
-
-        <Button onClick={() => router.push("/gecmisim")} className="relative">
-          Benim Geçmişim
-          {pendingCount > 0 && (
-            <Badge
-              variant="destructive"
-              className="absolute -top-2 -right-2 px-2 py-0.5 text-xs"
-            >
-              {pendingCount}
-            </Badge>
-          )}
-        </Button>
-
-        {user.role === "ADMIN" && (
-          <>
-            <Button onClick={() => router.push("/admin/users")}>
-              Kullanıcı Yönetimi
-            </Button>
-            <Button onClick={() => router.push("/admin/create-user")}>
-              Yeni Kullanıcı
-            </Button>
-          </>
+    <div className="min-h-screen bg-background">
+      <div
+        className={cn(
+          "transition-all duration-300",
+          contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
         )}
-      </div>
-
-      {/* EVRAK SORGULA */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Evrak Sorgula</CardTitle>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Evrak numarası"
-              value={docNumber}
-              onChange={(e) =>
-                setDocNumber(e.target.value.replace(/\D/g, ""))
-              }
-              onKeyDown={handleKeyDownSearch}
-            />
-            <Button onClick={runSearch} 
-            disabled={isLoading}
-            className="cursor-pointer" >
-              {isLoading ? "Aranıyor..." : "Ara"}
+      >
+      {/* STICKY HEADER */}
+      <header className="sticky top-0 z-10 h-16 border-b bg-background">
+        <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
+          <h1 className="font-semibold tracking-tight text-xl text-foreground">
+            Zimmetly
+          </h1>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">{user.fullName}</span>
+            {user.role === "ADMIN" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="cursor-pointer text-sm"
+                onClick={() => router.push("/admin/users")}
+              >
+                Kullanıcı Yönetimi
+              </Button>
+            )}
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={logoutLoading}
+              className="cursor-pointer"
+              onClick={() => {
+                setLogoutLoading(true);
+                logout();
+                router.push("/login");
+              }}
+            >
+              {logoutLoading ? "Çıkılıyor..." : "Çıkış Yap"}
             </Button>
           </div>
+        </div>
+      </header>
 
-          {errorMsg && (
-            <Alert variant="destructive">
-              <AlertDescription>{errorMsg}</AlertDescription>
-            </Alert>
-          )}
-
-          {docResult && (
-            <div className="border rounded-md p-4 space-y-3">
-              {docResult.status === "ARCHIVED" && (
-                <div className="p-3 border rounded-md bg-amber-50 text-amber-800 text-sm">
-                  <p className="font-medium">Bu evrak arşivlenmiştir</p>
-                  <p>Arşivleyen: {docResult.archivedBy?.fullName ?? "-"}</p>
-                  <p>
-                    Tarih:{" "}
-                    {docResult.archivedAt
-                      ? formatDateTR(docResult.archivedAt)
-                      : "-"}
-                  </p>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <p className="font-medium">
-                  Evrak No:{" "}
-                  <button
-                    type="button"
-                    onClick={() => setOpenTimeline(true)}
-                    className="cursor-pointer underline-offset-2 hover:underline transition-colors text-left"
-                  >
-                    {docResult.number}
-                  </button>
-                </p>
-                {lastAccepted && docResult.status !== "ARCHIVED" && (
-                  <Badge>
-                    En son kimde: {lastAccepted.toUser?.fullName}
-                    {lastAccepted.toUser?.id === user?.id ? " (sende)" : ""}
-                  </Badge>
-                )}
-                {docResult.status === "ARCHIVED" && (
-                  <Badge variant="secondary">Arşivlendi</Badge>
-                )}
-              </div>
-
-              <div className="pt-2 border-t">
-                <p className="font-medium mb-2">Zimmet Geçmişi</p>
-
-                {timelineLoading && (
-                  <p className="text-sm text-muted-foreground">
-                    Yükleniyor...
-                  </p>
-                )}
-
-                {!timelineLoading && timeline.length === 0 && docResult.status !== "ARCHIVED" && (
-                  <p className="text-sm text-muted-foreground">
-                    Zimmet kaydı yok.
-                  </p>
-                )}
-
-                {!timelineLoading && timeline.length > 0 && (
-                  <Timeline items={timeline} />
-                )}
-              </div>
+      {/* ANA ALAN */}
+      <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+        {/* HIZLI AKSİYON KARTLARI */}
+        <section className="grid gap-4 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={scrollToEvrakSorgula}
+            className="group flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:bg-muted/30"
+          >
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Search className="h-5 w-5" />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <h3 className="text-lg font-semibold text-foreground">Evrak Sorgula</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Bir evrağın kimde olduğunu anında öğren
+            </p>
+          </button>
 
-      {/* HIZLI ZİMMET FORMU */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Hızlı Zimmet</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Evrak numarası */}
-          <Input
-            placeholder="Evrak numarası"
-            value={zimmetNumber}
-            onChange={(e) => {
-              // Sadece rakamları kabul et
-              const value = e.target.value.replace(/[^0-9]/g, "");
-              setZimmetNumber(value);
-            }}
-            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                // Eğer hem evrak numarası hem de kullanıcı seçili ise zimmetle
-                if (zimmetNumber && zimmetUserId) {
-                  handleZimmet();
+          <button
+            type="button"
+            onClick={() => router.push("/zimmet")}
+            className="group flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:bg-muted/30"
+          >
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Send className="h-5 w-5" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground">Zimmet Oluştur</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Yeni zimmet kaydı başlat
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/gecmisim")}
+            className="group relative flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:bg-muted/30"
+          >
+            {pendingCount > 0 && (
+              <Badge
+                variant="destructive"
+                className="absolute right-4 top-4 px-2 py-0.5 text-xs"
+              >
+                {pendingCount}
+              </Badge>
+            )}
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <History className="h-5 w-5" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground">Geçmişim</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Tüm işlem geçmişini görüntüle
+            </p>
+          </button>
+        </section>
+
+        {/* EVRAK SORGULAMA */}
+        <Card id="evrak-sorgula" className="rounded-xl border shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold">Evrak Sorgulama</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Evrak numarası ile sorgulayın
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div ref={evrakInputRef} className="flex flex-wrap gap-2 sm:flex-nowrap">
+              <Input
+                placeholder="Evrak numarası"
+                value={docNumber}
+                onChange={(e) =>
+                  setDocNumber(e.target.value.replace(/\D/g, ""))
                 }
-              }
-            }}
-          />
+                onKeyDown={handleKeyDownSearch}
+                className="rounded-lg transition-colors focus-visible:ring-2 flex-1 min-w-0"
+              />
+              <Button
+                onClick={runSearch}
+                disabled={isLoading}
+                className="cursor-pointer shrink-0 rounded-lg transition-colors"
+              >
+                {isLoading ? "Aranıyor..." : "Sorgula"}
+              </Button>
+            </div>
 
-          {/* Kullanıcı arama + dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <Input
-              placeholder="Kime zimmetlenecek? (İsim / Departman)"
-              value={zimmetUserSearch}
-              onChange={(e) => {
-                setZimmetUserSearch(e.target.value);
-                setIsUserDropdownOpen(true);
-                setHighlightIndex(0);
-              }}
-              onFocus={() => setIsUserDropdownOpen(true)}
-              onKeyDown={handleUserInputKeyDown}
-            />
+            {errorMsg && (
+              <Alert variant="destructive" className="rounded-lg">
+                <AlertDescription>{errorMsg}</AlertDescription>
+              </Alert>
+            )}
 
-            {isUserDropdownOpen && filteredUsers.length > 0 && (
-              <div className="absolute z-10 bg-white border rounded-md mt-1 w-full max-h-60 overflow-y-auto shadow-md">
-                {filteredUsers.map((u, index) => (
-                  <div
-                    key={u.id}
-                    className={
-                      "px-3 py-2 cursor-pointer " +
-                      (index === highlightIndex
-                        ? "bg-blue-100"
-                        : "hover:bg-gray-100")
-                    }
-                    onClick={() => {
-                      setZimmetUserId(u.id);
-                      setZimmetUserSearch(
-                        `${u.fullName} — ${u.department ?? ""}`
-                      );
-                      setIsUserDropdownOpen(false);
-                    }}
-                  >
-                    <div className="font-medium">{u.fullName}</div>
-                    <div className="text-xs text-gray-500">
-                      {u.department || "Departman yok"}
-                    </div>
+            {docResult && (
+              <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+                {docResult.status === "ARCHIVED" && (
+                  <div className="rounded-lg border bg-amber-50 p-3 text-sm text-amber-800">
+                    <p className="font-medium">Bu evrak arşivlenmiştir</p>
+                    <p>Arşivleyen: {docResult.archivedBy?.fullName ?? "-"}</p>
+                    <p>
+                      Tarih:{" "}
+                      {docResult.archivedAt
+                        ? formatDateTR(docResult.archivedAt)
+                        : "-"}
+                    </p>
                   </div>
-                ))}
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">
+                    Evrak No:{" "}
+                    <button
+                      type="button"
+                      onClick={() => setOpenTimeline(true)}
+                      className="cursor-pointer underline-offset-2 transition-colors hover:underline hover:bg-muted/50 rounded px-1 -mx-1"
+                    >
+                      {docResult.number}
+                    </button>
+                  </p>
+                  {lastAccepted && docResult.status !== "ARCHIVED" && (
+                    <Badge>
+                      En son kimde: {lastAccepted.toUser?.fullName}
+                      {lastAccepted.toUser?.id === user?.id ? " (sende)" : ""}
+                    </Badge>
+                  )}
+                  {docResult.status === "ARCHIVED" && (
+                    <Badge variant="secondary">Arşivlendi</Badge>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t">
+                  <p className="mb-3 text-lg font-semibold">Zimmet Geçmişi</p>
+
+                  {timelineLoading && (
+                    <p className="text-sm text-muted-foreground">
+                      Yükleniyor...
+                    </p>
+                  )}
+
+                  {!timelineLoading && timeline.length === 0 && docResult.status !== "ARCHIVED" && (
+                    <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+                      <FileText className="h-10 w-10 text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground">
+                        Henüz işlem yok
+                      </p>
+                    </div>
+                  )}
+
+                  {!timelineLoading && timeline.length > 0 && (
+                    <div className="rounded-xl bg-muted/30 p-4">
+                      <Timeline items={timeline} />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Zimmet Notu (opsiyonel)</label>
-            <textarea
-              value={zimmetNote}
-              onChange={(e) => setZimmetNote(e.target.value)}
-              placeholder="İsteğe bağlı açıklama"
-              className="w-full min-h-[90px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        {/* HIZLI ZİMMET FORMU */}
+        <Card className="rounded-xl border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl font-semibold">Hızlı Zimmet</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Evrak numarası ve kime zimmetleneceğini seçin
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Evrak numarası</label>
+              <Input
+                placeholder="Evrak numarası"
+                value={zimmetNumber}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/[^0-9]/g, "");
+                  setZimmetNumber(value);
+                }}
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (zimmetNumber && zimmetUserId) handleZimmet();
+                  }
+                }}
+                className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
+              />
+            </div>
+
+            <div className="relative space-y-1.5" ref={dropdownRef}>
+              <label className="text-sm font-medium">Kime zimmetlenecek?</label>
+              <Input
+                placeholder="İsim veya departman ile ara"
+                value={zimmetUserSearch}
+                onChange={(e) => {
+                  setZimmetUserSearch(e.target.value);
+                  setIsUserDropdownOpen(true);
+                  setHighlightIndex(0);
+                }}
+                onFocus={() => setIsUserDropdownOpen(true)}
+                onKeyDown={handleUserInputKeyDown}
+                className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
+              />
+              {isUserDropdownOpen && filteredUsers.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border bg-card shadow-md">
+                  {filteredUsers.map((u, index) => (
+                    <div
+                      key={u.id}
+                      className={cn(
+                        "cursor-pointer px-3 py-2 transition-colors",
+                        index === highlightIndex ? "bg-primary/10" : "hover:bg-muted/50"
+                      )}
+                      onClick={() => {
+                        setZimmetUserId(u.id);
+                        setZimmetUserSearch(
+                          `${u.fullName} — ${u.department ?? ""}`
+                        );
+                        setIsUserDropdownOpen(false);
+                      }}
+                    >
+                      <div className="font-medium">{u.fullName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {u.department || "Departman yok"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={() => handleZimmet()}
               disabled={isZimmetLoading}
-            />
-          </div>
+              className="w-full cursor-pointer rounded-lg transition-colors"
+            >
+              {isZimmetLoading ? "Zimmetleniyor..." : "Zimmetle"}
+            </Button>
 
-          {/* ZİMMETLE BUTTON */}
-          <Button
-            onClick={() => handleZimmet()}
-            disabled={isZimmetLoading}
-            className="w-full cursor-pointer"
-          >
-            {isZimmetLoading ? "Zimmetleniyor..." : "Zimmetle"}
-          </Button>
+            {zimmetError && (
+              <Alert variant="destructive" className="rounded-lg">
+                <AlertDescription>{zimmetError}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
 
-          {zimmetError && (
-            <Alert variant="destructive">
-              <AlertDescription>{zimmetError}</AlertDescription>
+        {/* BAŞARI MESAJI */}
+        <div
+          className={cn(
+            "overflow-hidden transition-all duration-300",
+            showSuccessMessage ? "max-h-20 opacity-100" : "max-h-0 opacity-0"
+          )}
+        >
+          {zimmetMessage && (
+            <Alert className="rounded-lg bg-green-50 border-green-200 text-green-800">
+              <AlertDescription className="flex items-center gap-2">
+                <svg
+                  className="h-5 w-5 text-green-600 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                {zimmetMessage}
+              </AlertDescription>
             </Alert>
           )}
-        </CardContent>
-      </Card>
-
-      {/* BAŞARI MESAJI: ZİMMET BUTONUNUN ALTINDA, KARTIN DIŞINDA */}
-      <div
-        className={`overflow-hidden transition-all duration-300 ${
-          showSuccessMessage ? "max-h-20 opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
-        }`}
-      >
-        {zimmetMessage && (
-          <Alert className="bg-green-50 border-green-200 text-green-800">
-            <AlertDescription className="flex items-center gap-2">
-              <svg
-                className="h-5 w-5 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              {zimmetMessage}
-            </AlertDescription>
-          </Alert>
-        )}
+        </div>
+      </main>
       </div>
 
       {docResult && (

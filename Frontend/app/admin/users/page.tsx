@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { Loader2, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,15 +13,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 
 import {
   Dialog,
@@ -58,7 +51,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [query, setQuery] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [isUsersLoading, setIsUsersLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   // --- Edit Dialog state ---
@@ -77,6 +70,7 @@ export default function AdminUsersPage() {
 
   // --- Toggle Active state ---
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
+  const [contentVisible, setContentVisible] = useState(false);
 
   // 1) Yetki kontrolü: /auth/me ile admin mi bak
   useEffect(() => {
@@ -114,7 +108,7 @@ export default function AdminUsersPage() {
   // 2) Admin users listesi çek
   const fetchUsers = async () => {
     setErrorMsg("");
-    setLoading(true);
+    setIsUsersLoading(true);
 
     try {
       const token = getToken();
@@ -138,7 +132,7 @@ export default function AdminUsersPage() {
     } catch (e) {
       setErrorMsg("Sunucuya bağlanılamadı.");
     } finally {
-      setLoading(false);
+      setIsUsersLoading(false);
     }
   };
 
@@ -146,6 +140,10 @@ export default function AdminUsersPage() {
     if (me?.role === "ADMIN") fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role]);
+
+  useEffect(() => {
+    if (me) setContentVisible(true);
+  }, [me]);
 
   // 3) Filtre
   const filtered = useMemo(() => {
@@ -293,132 +291,161 @@ export default function AdminUsersPage() {
   };
 
   if (!me) {
-    return <div className="p-6">Yükleniyor...</div>;
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
+        <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen p-6 max-w-6xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Kullanıcı Yönetimi</h2>
-          <p className="text-sm text-muted-foreground">
-            Admin: {me.fullName}
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push("/dashboard")}>
-            Dashboard
-          </Button>
-          <Button onClick={() => setOpenModal(true)}>
-            Yeni Kullanıcı
-          </Button>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Kullanıcılar</CardTitle>
-
+    <div className="min-h-screen bg-background">
+      <main
+        className={cn(
+          "mx-auto max-w-7xl space-y-8 px-6 py-8 transition-all duration-300",
+          contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+        )}
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Kullanıcı Yönetimi</h1>
+            <p className="text-sm text-muted-foreground">Sistemdeki kullanıcıları yönetin</p>
+          </div>
           <div className="flex gap-2">
-            <Input
-              className="w-[320px]"
-              placeholder="Ara: isim / email / departman / rol"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <Button variant="secondary" onClick={fetchUsers} disabled={loading}>
-              {loading ? "Yükleniyor..." : "Yenile"}
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => router.push("/dashboard")}
+            >
+              Dashboard
+            </Button>
+            <Button
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => setOpenModal(true)}
+            >
+              Yeni Kullanıcı
             </Button>
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="space-y-3">
-          {errorMsg && (
-            <Alert variant="destructive">
-              <AlertDescription>{errorMsg}</AlertDescription>
-            </Alert>
-          )}
+        <Card className="rounded-xl border shadow-sm">
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="font-semibold">Kullanıcılar</CardTitle>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                className="w-full min-w-0 sm:w-[280px] rounded-lg"
+                placeholder="Ara: isim / email / departman / rol"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                className="cursor-pointer shrink-0"
+                onClick={fetchUsers}
+                disabled={isUsersLoading}
+              >
+                {isUsersLoading ? "Yenileniyor…" : "Yenile"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {errorMsg && (
+              <Alert variant="destructive" className="rounded-lg">
+                <AlertDescription>{errorMsg}</AlertDescription>
+              </Alert>
+            )}
 
-          <div className="border rounded-md overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ad Soyad</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Departman</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Durum</TableHead>
-                  <TableHead className="text-right">İşlem</TableHead>
-                </TableRow>
-              </TableHeader>
+            {isUsersLoading && (
+              <div className="flex flex-col items-center justify-center gap-3 py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+                <p className="text-sm text-muted-foreground">Kullanıcılar yenileniyor…</p>
+              </div>
+            )}
 
-              <TableBody>
-                {filtered.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.fullName}</TableCell>
-                    <TableCell>{u.email}</TableCell>
-                    <TableCell>{u.department || "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant={u.role === "ADMIN" ? "default" : "secondary"}>
-                        {u.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          u.isActive
-                            ? "bg-green-500 hover:bg-green-600 text-white"
-                            : "bg-red-500 hover:bg-red-600 text-white"
-                        }
-                      >
-                        {u.isActive ? "AKTİF" : "PASİF"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEdit(u)}
+            <div
+              className={cn(
+                "transition-opacity duration-300",
+                isUsersLoading && "opacity-50 pointer-events-none"
+              )}
+            >
+              {filtered.length === 0 && !isUsersLoading ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                  <Users className="h-10 w-10 text-muted-foreground/50" />
+                  <p className="text-sm text-muted-foreground">Kullanıcı bulunamadı</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filtered.map((u) => (
+                    <div
+                      key={u.id}
+                      className="flex cursor-pointer flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{u.fullName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {u.email}
+                          {u.department ? ` · ${u.department}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
+                        <Badge
+                          variant={u.role === "ADMIN" ? "default" : "secondary"}
+                          className="rounded-full text-xs"
                         >
-                          Düzenle
-                        </Button>
-
-                        <div className="flex items-center space-x-2">
+                          {u.role}
+                        </Badge>
+                        <div
+                          className={cn(
+                            "flex items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-muted/20",
+                            (isUsersLoading || toggleLoadingId === u.id) && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
                           <Switch
                             id={`toggle-${u.id}`}
                             checked={u.isActive ?? true}
                             onCheckedChange={() => handleToggleActive(u)}
-                            disabled={toggleLoadingId === u.id}
-                            className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
+                            disabled={isUsersLoading || toggleLoadingId === u.id}
+                            className="cursor-pointer data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
                           />
                           <Label
                             htmlFor={`toggle-${u.id}`}
-                            className="text-sm cursor-pointer"
+                            className={cn(
+                              "text-sm",
+                              isUsersLoading || toggleLoadingId === u.id ? "cursor-not-allowed" : "cursor-pointer"
+                            )}
                           >
-                            {u.isActive ? "Aktif" : "Pasif"}
+                            {toggleLoadingId === u.id
+                              ? "Güncelleniyor…"
+                              : u.isActive
+                                ? "Aktif"
+                                : "Pasif"}
                           </Label>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="cursor-pointer shrink-0"
+                          disabled={isUsersLoading}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(u);
+                          }}
+                        >
+                          Düzenle
+                        </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
-                      Kayıt bulunamadı.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          
-        </CardContent>
-      </Card>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </main>
 
       {/* EDIT DIALOG */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

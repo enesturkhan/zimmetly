@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { Loader2, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 
@@ -14,6 +14,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import {
   Dialog,
@@ -41,6 +47,250 @@ type Me = {
   fullName: string;
   role: Role;
 };
+
+/* ================= UI COMPONENTS (same file) ================= */
+
+function AdminHeader({
+  onRefresh,
+  refreshLoading,
+}: {
+  onRefresh: () => void;
+  refreshLoading: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-xl font-semibold">Kullanıcı Yönetimi</h1>
+        <p className="text-sm text-muted-foreground">
+          Sistemdeki kullanıcıları yönetin
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="cursor-pointer min-w-[5.5rem]"
+        onClick={onRefresh}
+        disabled={refreshLoading}
+      >
+        {refreshLoading ? "Yenileniyor…" : "Yenile"}
+      </Button>
+    </div>
+  );
+}
+
+function UsersEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 py-12 text-center">
+      <Users className="h-10 w-10 text-muted-foreground/50" />
+      <p className="text-sm text-muted-foreground">Henüz kullanıcı bulunmuyor</p>
+    </div>
+  );
+}
+
+function UsersLoadingSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3, 4].map((i) => (
+        <div
+          key={i}
+          className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-5 w-40 rounded-md" />
+            <Skeleton className="h-4 w-56 rounded-md" />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton className="h-6 w-20 rounded-md" />
+            <Skeleton className="h-8 w-20 rounded-md" />
+            <Skeleton className="h-8 w-16 rounded-md" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UserRow({
+  u,
+  isToggleLoading,
+  isDeleteLoading,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  u: UserRow;
+  isToggleLoading: boolean;
+  isDeleteLoading: boolean;
+  onToggle: () => void;
+  onEdit: (e: React.MouseEvent) => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
+  const isActive = u.isActive ?? true;
+  const rowDisabled = isToggleLoading || isDeleteLoading;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm transition-all hover:bg-muted/40 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between",
+        rowDisabled && "opacity-60 pointer-events-none"
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="font-medium break-words">{u.fullName}</p>
+        <p className="text-sm text-muted-foreground break-words">
+          {u.email}
+          {u.department ? ` · ${u.department}` : ""}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
+        <Badge
+          variant={u.role === "ADMIN" ? "default" : "secondary"}
+          className="rounded-full text-xs"
+        >
+          {u.role}
+        </Badge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-muted/20">
+              <Switch
+                id={`toggle-${u.id}`}
+                checked={isActive}
+                onCheckedChange={onToggle}
+                disabled={rowDisabled}
+                className="cursor-pointer data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
+              />
+              <Label
+                htmlFor={`toggle-${u.id}`}
+                className={cn(
+                  "text-sm cursor-pointer",
+                  rowDisabled && "cursor-not-allowed"
+                )}
+              >
+                {isToggleLoading ? "Güncelleniyor…" : isActive ? "Aktif" : "Pasif"}
+              </Label>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {isActive ? "Kullanıcıyı pasif hale getir" : "Aktif hale getir"}
+          </TooltipContent>
+        </Tooltip>
+        <Button
+          variant="outline"
+          size="sm"
+          className="cursor-pointer min-w-[5rem]"
+          disabled={rowDisabled}
+          onClick={onEdit}
+        >
+          Düzenle
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="cursor-pointer min-w-[4.5rem]"
+          disabled={rowDisabled}
+          onClick={onDelete}
+        >
+          {isDeleteLoading ? "Siliniyor…" : "Sil"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function UsersTable({
+  query,
+  setQuery,
+  filtered,
+  isUsersLoading,
+  errorMsg,
+  toggleLoadingId,
+  deleteLoadingId,
+  onOpenCreate,
+  openEdit,
+  handleToggleActive,
+  handleDelete,
+  onDashboard,
+}: {
+  query: string;
+  setQuery: (v: string) => void;
+  filtered: UserRow[];
+  isUsersLoading: boolean;
+  errorMsg: string;
+  toggleLoadingId: string | null;
+  deleteLoadingId: string | null;
+  onOpenCreate: () => void;
+  openEdit: (u: UserRow) => void;
+  handleToggleActive: (u: UserRow) => void;
+  handleDelete: (id: string) => void;
+  onDashboard: () => void;
+}) {
+  return (
+    <Card className="rounded-xl border shadow-sm">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle className="font-semibold">Kullanıcılar</CardTitle>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            className="w-full min-w-0 sm:w-[280px] rounded-lg focus-visible:ring-2 cursor-text"
+            placeholder="Ara: isim / email / departman / rol"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <Button
+            size="sm"
+            className="cursor-pointer min-w-[7rem]"
+            onClick={onOpenCreate}
+          >
+            Yeni Kullanıcı
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="cursor-pointer"
+            onClick={onDashboard}
+          >
+            Dashboard
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {errorMsg && (
+          <Alert variant="destructive" className="rounded-lg">
+            <AlertDescription>{errorMsg}</AlertDescription>
+          </Alert>
+        )}
+
+        {isUsersLoading && <UsersLoadingSkeleton />}
+
+        {!isUsersLoading && filtered.length === 0 && <UsersEmptyState />}
+
+        {!isUsersLoading && filtered.length > 0 && (
+          <div className="space-y-3">
+            {filtered.map((u) => (
+              <UserRow
+                key={u.id}
+                u={u}
+                isToggleLoading={toggleLoadingId === u.id}
+                isDeleteLoading={deleteLoadingId === u.id}
+                onToggle={() => handleToggleActive(u)}
+                onEdit={(e) => {
+                  e.stopPropagation();
+                  openEdit(u);
+                }}
+                onDelete={(e) => {
+                  e.stopPropagation();
+                  handleDelete(u.id);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================= PAGE ================= */
 
 export default function AdminUsersPage() {
   const router = useRouter();
@@ -71,7 +321,6 @@ export default function AdminUsersPage() {
 
   // --- Toggle Active state ---
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
-  const [contentVisible, setContentVisible] = useState(false);
 
   // 1) Yetki kontrolü: /auth/me ile admin mi bak
   useEffect(() => {
@@ -143,10 +392,6 @@ export default function AdminUsersPage() {
     if (me?.role === "ADMIN") fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role]);
-
-  useEffect(() => {
-    if (me) setContentVisible(true);
-  }, [me]);
 
   // 3) Filtre
   const filtered = useMemo(() => {
@@ -299,159 +544,48 @@ export default function AdminUsersPage() {
 
   if (!me) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
-        <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
+      <div className="min-h-screen bg-background">
+        <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+          <AdminHeader onRefresh={() => {}} refreshLoading={true} />
+          <Card className="rounded-xl border shadow-sm">
+            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="font-semibold">Kullanıcılar</CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  className="w-full min-w-0 sm:w-[280px] rounded-lg focus-visible:ring-2 cursor-text"
+                  placeholder="Ara: isim / email / departman / rol"
+                  disabled
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <UsersLoadingSkeleton />
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <main
-        className={cn(
-          "mx-auto max-w-7xl space-y-8 px-6 py-8 transition-all duration-300",
-          contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-        )}
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">Kullanıcı Yönetimi</h1>
-            <p className="text-sm text-muted-foreground">Sistemdeki kullanıcıları yönetin</p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="cursor-pointer"
-              onClick={() => router.push("/dashboard")}
-            >
-              Dashboard
-            </Button>
-            <Button
-              size="sm"
-              className="cursor-pointer"
-              onClick={() => setOpenModal(true)}
-            >
-              Yeni Kullanıcı
-            </Button>
-          </div>
-        </div>
+      <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+        <AdminHeader onRefresh={fetchUsers} refreshLoading={isUsersLoading} />
 
-        <Card className="rounded-xl border shadow-sm">
-          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="font-semibold">Kullanıcılar</CardTitle>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                className="w-full min-w-0 sm:w-[280px] rounded-lg"
-                placeholder="Ara: isim / email / departman / rol"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                className="cursor-pointer shrink-0"
-                onClick={fetchUsers}
-                disabled={isUsersLoading}
-              >
-                {isUsersLoading ? "Yenileniyor…" : "Yenile"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {errorMsg && (
-              <Alert variant="destructive" className="rounded-lg">
-                <AlertDescription>{errorMsg}</AlertDescription>
-              </Alert>
-            )}
-
-            {isUsersLoading && (
-              <div className="flex flex-col items-center justify-center gap-3 py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
-                <p className="text-sm text-muted-foreground">Kullanıcılar yenileniyor…</p>
-              </div>
-            )}
-
-            <div
-              className={cn(
-                "transition-opacity duration-300",
-                isUsersLoading && "opacity-50 pointer-events-none"
-              )}
-            >
-              {filtered.length === 0 && !isUsersLoading ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                  <Users className="h-10 w-10 text-muted-foreground/50" />
-                  <p className="text-sm text-muted-foreground">Kullanıcı bulunamadı</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filtered.map((u) => (
-                    <div
-                      key={u.id}
-                      className="flex cursor-pointer flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{u.fullName}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {u.email}
-                          {u.department ? ` · ${u.department}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
-                        <Badge
-                          variant={u.role === "ADMIN" ? "default" : "secondary"}
-                          className="rounded-full text-xs"
-                        >
-                          {u.role}
-                        </Badge>
-                        <div
-                          className={cn(
-                            "flex items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-muted/20",
-                            (isUsersLoading || toggleLoadingId === u.id) && "opacity-50 cursor-not-allowed"
-                          )}
-                        >
-                          <Switch
-                            id={`toggle-${u.id}`}
-                            checked={u.isActive ?? true}
-                            onCheckedChange={() => handleToggleActive(u)}
-                            disabled={isUsersLoading || toggleLoadingId === u.id}
-                            className="cursor-pointer data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
-                          />
-                          <Label
-                            htmlFor={`toggle-${u.id}`}
-                            className={cn(
-                              "text-sm",
-                              isUsersLoading || toggleLoadingId === u.id ? "cursor-not-allowed" : "cursor-pointer"
-                            )}
-                          >
-                            {toggleLoadingId === u.id
-                              ? "Güncelleniyor…"
-                              : u.isActive
-                                ? "Aktif"
-                                : "Pasif"}
-                          </Label>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="cursor-pointer shrink-0"
-                          disabled={isUsersLoading}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(u);
-                          }}
-                        >
-                          Düzenle
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <UsersTable
+          query={query}
+          setQuery={setQuery}
+          filtered={filtered}
+          isUsersLoading={isUsersLoading}
+          errorMsg={errorMsg}
+          toggleLoadingId={toggleLoadingId}
+          deleteLoadingId={deleteLoadingId}
+          onOpenCreate={() => setOpenModal(true)}
+          openEdit={openEdit}
+          handleToggleActive={handleToggleActive}
+          handleDelete={handleDelete}
+          onDashboard={() => router.push("/dashboard")}
+        />
       </main>
 
       {/* EDIT DIALOG */}
@@ -500,11 +634,19 @@ export default function AdminUsersPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setEditOpen(false)}
+            >
               İptal
             </Button>
-            <Button onClick={handleSave} disabled={editLoading}>
-              {editLoading ? "Kaydediliyor..." : "Kaydet"}
+            <Button
+              className="cursor-pointer min-w-[6.5rem]"
+              onClick={handleSave}
+              disabled={editLoading}
+            >
+              {editLoading ? "Kaydediliyor…" : "Kaydet"}
             </Button>
           </DialogFooter>
         </DialogContent>

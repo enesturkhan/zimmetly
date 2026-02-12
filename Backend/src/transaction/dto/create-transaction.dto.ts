@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class CreateTransactionDto {
   @IsString()
@@ -8,4 +8,8 @@ export class CreateTransactionDto {
   @IsString()
   @IsNotEmpty()
   toUserId: string;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
 }

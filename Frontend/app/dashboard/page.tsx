@@ -86,6 +86,265 @@ function statusVariant(status?: string) {
   return "outline";
 }
 
+type QuickActionCardProps = {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+  badge?: React.ReactNode;
+};
+
+function QuickActionCard({
+  icon,
+  title,
+  description,
+  onClick,
+  badge,
+}: QuickActionCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:bg-muted/40 hover:shadow-sm"
+    >
+      {badge}
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {icon}
+      </div>
+      <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    </button>
+  );
+}
+
+function DashboardEmptyState({
+  icon,
+  message,
+}: {
+  icon: React.ReactNode;
+  message: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 py-10 text-center">
+      {icon}
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
+type DashboardHeaderProps = {
+  user: UserMe;
+  logoutLoading: boolean;
+  onManageUsers: () => void;
+  onLogout: () => void;
+};
+
+function DashboardHeader({
+  user,
+  logoutLoading,
+  onManageUsers,
+  onLogout,
+}: DashboardHeaderProps) {
+  return (
+    <header className="sticky top-0 z-10 h-16 border-b bg-background">
+      <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
+        <h1 className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</h1>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground flex items-center gap-2">
+            {user.fullName}
+            {user.role === "ADMIN" && (
+              <Badge
+                variant="outline"
+                className="text-xs font-normal text-muted-foreground border-muted"
+              >
+                Admin
+              </Badge>
+            )}
+          </span>
+          {user.role === "ADMIN" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="cursor-pointer text-sm underline-offset-2 hover:underline"
+              onClick={onManageUsers}
+              aria-label="Kullanıcı Yönetimi"
+            >
+              Kullanıcı Yönetimi
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={logoutLoading}
+            className="cursor-pointer min-w-[7rem]"
+            onClick={onLogout}
+          >
+            {logoutLoading ? "Çıkılıyor..." : "Çıkış Yap"}
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+type EvrakSonucCardProps = {
+  docResult: DocumentResponse;
+  timeline: TimelineItem[];
+  timelineLoading: boolean;
+  userId?: string;
+  onOpenTimeline: () => void;
+};
+
+function EvrakSonucCard({
+  docResult,
+  timeline,
+  timelineLoading,
+  userId,
+  onOpenTimeline,
+}: EvrakSonucCardProps) {
+  const lastAccepted = [...timeline]
+    .filter((t) => t.type === "TRANSACTION")
+    .reverse()
+    .find((t) => t.status === "ACCEPTED");
+
+  return (
+    <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+      {docResult.status === "ARCHIVED" && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <p className="font-medium">Bu evrak arşivlenmiştir</p>
+          <p>Arşivleyen: {docResult.archivedBy?.fullName ?? "-"}</p>
+          <p>Tarih: {docResult.archivedAt ? formatDateTR(docResult.archivedAt) : "-"}</p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">
+          Evrak No:{" "}
+          <button
+            type="button"
+            onClick={onOpenTimeline}
+            className="cursor-pointer underline-offset-2 transition-colors hover:underline hover:bg-muted/50 rounded px-1 -mx-1"
+          >
+            {docResult.number}
+          </button>
+        </p>
+        {lastAccepted && docResult.status !== "ARCHIVED" && (
+          <Badge>
+            En son kimde: {lastAccepted.toUser?.fullName}
+            {lastAccepted.toUser?.id === userId ? " (sende)" : ""}
+          </Badge>
+        )}
+        {docResult.status === "ARCHIVED" && (
+          <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100">
+            Arşivli
+          </Badge>
+        )}
+      </div>
+
+      <div className="pt-3 border-t">
+        <p className="mb-3 text-lg font-semibold">Zimmet Geçmişi</p>
+
+        {timelineLoading && <Timeline items={[]} loading className="pb-2" />}
+
+        {!timelineLoading && timeline.length === 0 && docResult.status !== "ARCHIVED" && (
+          <DashboardEmptyState
+            icon={<FileText className="h-10 w-10 text-muted-foreground/50" />}
+            message="Bu evrak için henüz işlem yapılmamış"
+          />
+        )}
+
+        {!timelineLoading && timeline.length > 0 && (
+          <div className="rounded-xl border bg-background/60 p-4">
+            <Timeline items={timeline} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type EvrakSorguCardProps = {
+  docNumber: string;
+  setDocNumber: (v: string) => void;
+  runSearch: () => void;
+  isLoading: boolean;
+  errorMsg: string;
+  searchNotFound: boolean;
+  docResult: DocumentResponse | null;
+  timeline: TimelineItem[];
+  timelineLoading: boolean;
+  userId?: string;
+  onOpenTimeline: () => void;
+  onKeyDownSearch: (e: KeyboardEvent<HTMLInputElement>) => void;
+  evrakInputRef: React.RefObject<HTMLDivElement | null>;
+};
+
+function EvrakSorguCard({
+  docNumber,
+  setDocNumber,
+  runSearch,
+  isLoading,
+  errorMsg,
+  searchNotFound,
+  docResult,
+  timeline,
+  timelineLoading,
+  userId,
+  onOpenTimeline,
+  onKeyDownSearch,
+  evrakInputRef,
+}: EvrakSorguCardProps) {
+  return (
+    <Card id="evrak-sorgula" className="rounded-xl border shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-xl font-semibold">Evrak Sorgulama</CardTitle>
+        <p className="text-sm text-muted-foreground">Evrak numarası ile sorgulayın</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div ref={evrakInputRef} className="flex flex-wrap gap-2 sm:flex-nowrap">
+          <Input
+            placeholder="Evrak numarası"
+            value={docNumber}
+            onChange={(e) => setDocNumber(e.target.value.replace(/\D/g, ""))}
+            onKeyDown={onKeyDownSearch}
+            className="rounded-lg transition-colors focus-visible:ring-2 flex-1 min-w-0"
+          />
+          <Button
+            onClick={runSearch}
+            disabled={isLoading}
+            className="cursor-pointer shrink-0 rounded-lg min-w-[8rem]"
+          >
+            {isLoading ? "Aranıyor..." : "Sorgula"}
+          </Button>
+        </div>
+
+        {errorMsg && !searchNotFound && (
+          <Alert variant="destructive" className="rounded-lg">
+            <AlertDescription>{errorMsg}</AlertDescription>
+          </Alert>
+        )}
+
+        {searchNotFound && (
+          <DashboardEmptyState
+            icon={<FileX className="h-12 w-12 text-muted-foreground" />}
+            message="Bu numaraya ait evrak bulunamadı"
+          />
+        )}
+
+        {docResult && (
+          <EvrakSonucCard
+            docResult={docResult}
+            timeline={timeline}
+            timelineLoading={timelineLoading}
+            userId={userId}
+            onOpenTimeline={onOpenTimeline}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ================= PAGE ================= */
 
 export default function DashboardPage() {
@@ -383,24 +642,24 @@ export default function DashboardPage() {
     }
   };
 
-  const [contentVisible, setContentVisible] = useState(false);
-  useEffect(() => {
-    if (user) setContentVisible(true);
-  }, [user]);
-
   if (!user) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
-        <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-10 h-16 border-b bg-background">
+          <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
+            <h1 className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</h1>
+          </div>
+        </header>
+        <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+          <div className="space-y-2">
+            <div className="h-7 w-56 rounded-md bg-muted animate-pulse" />
+          </div>
+          <div className="h-40 rounded-xl bg-muted/80 animate-pulse" />
+          <div className="h-56 rounded-xl bg-muted/80 animate-pulse" />
+        </main>
       </div>
     );
   }
-
-  const lastAccepted = [...timeline]
-    .filter((t) => t.type === "TRANSACTION")
-    .reverse()
-    .find((t) => t.status === "ACCEPTED");
 
   const scrollToEvrakSorgula = () => {
     document.getElementById("evrak-sorgula")?.scrollIntoView({ behavior: "smooth" });
@@ -412,220 +671,64 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div
-        className={cn(
-          "transition-all duration-300",
-          contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-        )}
-      >
-      {/* STICKY HEADER */}
-      <header className="sticky top-0 z-10 h-16 border-b bg-background">
-        <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-          <h1 className="font-semibold tracking-tight text-xl text-foreground">
-            Zimmetly
-          </h1>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground flex items-center gap-2">
-              {user.fullName}
-              {user.role === "ADMIN" && (
-                <Badge
-                  variant="outline"
-                  className="text-xs font-normal text-muted-foreground border-muted"
-                >
-                  Admin
-                </Badge>
-              )}
-            </span>
-            {user.role === "ADMIN" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="cursor-pointer text-sm"
-                onClick={() => router.push("/admin/users")}
-                aria-label="Kullanıcı Yönetimi"
-              >
-                Kullanıcı Yönetimi
-              </Button>
-            )}
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={logoutLoading}
-              className="cursor-pointer"
-              onClick={() => {
-                setLogoutLoading(true);
-                logout();
-                router.push("/login");
-              }}
-            >
-              {logoutLoading ? "Çıkılıyor..." : "Çıkış Yap"}
-            </Button>
-          </div>
-        </div>
-      </header>
+      <DashboardHeader
+        user={user}
+        logoutLoading={logoutLoading}
+        onManageUsers={() => router.push("/admin/users")}
+        onLogout={() => {
+          setLogoutLoading(true);
+          logout();
+          router.push("/login");
+        }}
+      />
 
-      {/* ANA ALAN */}
       <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
-        {/* HIZLI AKSİYON KARTLARI */}
-        <section className="grid gap-4 sm:grid-cols-3">
-          <button
-            type="button"
+        <section className="grid gap-4 md:grid-cols-3">
+          <QuickActionCard
+            icon={<Search className="h-5 w-5" />}
+            title="Evrak Sorgula"
+            description="Bir evrağın kimde olduğunu anında öğren"
             onClick={scrollToEvrakSorgula}
-            className="group flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:bg-muted/30"
-          >
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Search className="h-5 w-5" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">Evrak Sorgula</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Bir evrağın kimde olduğunu anında öğren
-            </p>
-          </button>
-
-          <button
-            type="button"
+          />
+          <QuickActionCard
+            icon={<Send className="h-5 w-5" />}
+            title="Zimmet Oluştur"
+            description="Yeni zimmet kaydı başlat"
             onClick={() => router.push("/zimmet")}
-            className="group flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:bg-muted/30"
-          >
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Send className="h-5 w-5" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">Zimmet Oluştur</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Yeni zimmet kaydı başlat
-            </p>
-          </button>
-
-          <button
-            type="button"
+          />
+          <QuickActionCard
+            icon={<History className="h-5 w-5" />}
+            title="Geçmişim"
+            description="Tüm işlem geçmişini görüntüle"
             onClick={() => router.push("/gecmisim")}
-            className="group relative flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:bg-muted/30"
-          >
-            {pendingCount > 0 && (
-              <Badge
-                variant="destructive"
-                className="absolute right-4 top-4 px-2 py-0.5 text-xs"
-              >
-                {pendingCount}
-              </Badge>
-            )}
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <History className="h-5 w-5" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">Geçmişim</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Tüm işlem geçmişini görüntüle
-            </p>
-          </button>
+            badge={
+              pendingCount > 0 ? (
+                <Badge
+                  variant="destructive"
+                  className="absolute right-4 top-4 px-2 py-0.5 text-xs"
+                >
+                  {pendingCount}
+                </Badge>
+              ) : undefined
+            }
+          />
         </section>
 
-        {/* EVRAK SORGULAMA */}
-        <Card id="evrak-sorgula" className="rounded-xl border shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">Evrak Sorgulama</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Evrak numarası ile sorgulayın
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div ref={evrakInputRef} className="flex flex-wrap gap-2 sm:flex-nowrap">
-              <Input
-                placeholder="Evrak numarası"
-                value={docNumber}
-                onChange={(e) =>
-                  setDocNumber(e.target.value.replace(/\D/g, ""))
-                }
-                onKeyDown={handleKeyDownSearch}
-                className="rounded-lg transition-colors focus-visible:ring-2 flex-1 min-w-0"
-              />
-              <Button
-                onClick={runSearch}
-                disabled={isLoading}
-                className="cursor-pointer shrink-0 rounded-lg transition-colors"
-              >
-                {isLoading ? "Aranıyor..." : "Sorgula"}
-              </Button>
-            </div>
-
-            {errorMsg && !searchNotFound && (
-              <Alert variant="destructive" className="rounded-lg">
-                <AlertDescription>{errorMsg}</AlertDescription>
-              </Alert>
-            )}
-
-            {searchNotFound && (
-              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-muted/20 py-10 text-center">
-                <FileX className="h-12 w-12 text-muted-foreground" />
-                <p className="text-base text-muted-foreground">
-                  Bu numaraya ait evrak bulunamadı
-                </p>
-              </div>
-            )}
-
-            {docResult && (
-              <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
-                {docResult.status === "ARCHIVED" && (
-                  <div className="rounded-lg border bg-amber-50 p-3 text-sm text-amber-800">
-                    <p className="font-medium">Bu evrak arşivlenmiştir</p>
-                    <p>Arşivleyen: {docResult.archivedBy?.fullName ?? "-"}</p>
-                    <p>
-                      Tarih:{" "}
-                      {docResult.archivedAt
-                        ? formatDateTR(docResult.archivedAt)
-                        : "-"}
-                    </p>
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-medium">
-                    Evrak No:{" "}
-                    <button
-                      type="button"
-                      onClick={() => setOpenTimeline(true)}
-                      className="cursor-pointer underline-offset-2 transition-colors hover:underline hover:bg-muted/50 rounded px-1 -mx-1"
-                    >
-                      {docResult.number}
-                    </button>
-                  </p>
-                  {lastAccepted && docResult.status !== "ARCHIVED" && (
-                    <Badge>
-                      En son kimde: {lastAccepted.toUser?.fullName}
-                      {lastAccepted.toUser?.id === user?.id ? " (sende)" : ""}
-                    </Badge>
-                  )}
-                  {docResult.status === "ARCHIVED" && (
-                    <Badge variant="secondary">Arşivlendi</Badge>
-                  )}
-                </div>
-
-                <div className="pt-3 border-t">
-                  <p className="mb-3 text-lg font-semibold">Zimmet Geçmişi</p>
-
-                  {timelineLoading && (
-                    <p className="text-sm text-muted-foreground">
-                      Yükleniyor...
-                    </p>
-                  )}
-
-                  {!timelineLoading && timeline.length === 0 && docResult.status !== "ARCHIVED" && (
-                    <div className="flex flex-col items-center justify-center gap-2 py-6 text-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10">
-                      <FileText className="h-10 w-10 text-muted-foreground/50" />
-                      <p className="text-sm text-muted-foreground">
-                        Bu evrak için henüz bir işlem yapılmamış
-                      </p>
-                    </div>
-                  )}
-
-                  {!timelineLoading && timeline.length > 0 && (
-                    <div className="rounded-xl bg-muted/30 p-4">
-                      <Timeline items={timeline} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <EvrakSorguCard
+          docNumber={docNumber}
+          setDocNumber={setDocNumber}
+          runSearch={runSearch}
+          isLoading={isLoading}
+          errorMsg={errorMsg}
+          searchNotFound={searchNotFound}
+          docResult={docResult}
+          timeline={timeline}
+          timelineLoading={timelineLoading}
+          userId={user.id}
+          onOpenTimeline={() => setOpenTimeline(true)}
+          onKeyDownSearch={handleKeyDownSearch}
+          evrakInputRef={evrakInputRef}
+        />
 
         {/* HIZLI ZİMMET FORMU */}
         <Card className="rounded-xl border shadow-sm">
@@ -741,7 +844,6 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
-      </div>
 
       {docResult && (
         <TimelineModal

@@ -59,9 +59,9 @@ export function TimelineModal({
             Kapat
           </Button>
           <Button
-            variant="default"
+            variant="secondary"
             onClick={handleGoToDetail}
-            className="cursor-pointer"
+            className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]"
           >
             Detay Sayfasına Git
           </Button>

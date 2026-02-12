@@ -57,6 +57,7 @@ type TxItem = {
   documentNumber: string;
   status: TxStatus;
   createdAt: string;
+  note?: string;
   fromUser?: { id: string; fullName: string };
   toUser?: { id: string; fullName: string };
   fromUserId?: string;
@@ -148,7 +149,6 @@ export default function GecmisimPage() {
   const [selectedDocumentNumber, setSelectedDocumentNumber] = useState<string | null>(null);
   const [selectedTimeline, setSelectedTimeline] = useState<TimelineEvent[]>([]);
   const [timelineModalLoading, setTimelineModalLoading] = useState(false);
-  const [contentVisible, setContentVisible] = useState(false);
   const [expandedDocNumber, setExpandedDocNumber] = useState<string | null>(null);
   const [timelineByDoc, setTimelineByDoc] = useState<Record<string, TimelineEvent[]>>({});
   const [loadingTimelineDoc, setLoadingTimelineDoc] = useState<string | null>(null);
@@ -196,10 +196,6 @@ export default function GecmisimPage() {
   useEffect(() => {
     if (me) fetchMine();
   }, [me]);
-
-  useEffect(() => {
-    if (me && !loading) setContentVisible(true);
-  }, [me, loading]);
 
   useEffect(() => {
     const token = getToken();
@@ -449,147 +445,159 @@ export default function GecmisimPage() {
     title: string;
     docCards: DocCard[];
     children?: (docCard: DocCard) => React.ReactNode;
-  }) => (
-    <Card className="rounded-xl border shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="font-semibold">{title}</CardTitle>
-        <Badge variant="secondary" className="shrink-0">
-          {docCards.length}
-        </Badge>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {docCards.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10">
-            <FileText className="h-10 w-10 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">Bu alanda kayıt yok</p>
-            <p className="text-xs text-muted-foreground">
-              Bu bölümde henüz kayıt bulunmuyor
-            </p>
-          </div>
+  }) => {
+    const SectionEmpty = () => (
+      <div className="flex flex-col items-center justify-center gap-2 py-8 text-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10">
+        <FileText className="h-10 w-10 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground">Bu alanda kayıt yok</p>
+        <p className="text-xs text-muted-foreground">
+          Bu bölümde henüz kayıt bulunmuyor
+        </p>
+      </div>
+    );
+
+    const DocumentMeta = ({ tx }: { tx: TxItem }) => (
+      <>
+        <div className="text-xs text-muted-foreground">{formatDateTR(tx.createdAt)}</div>
+        <div className="text-sm">
+          <b>Kimden:</b> {tx.fromUser?.fullName}
+        </div>
+        <div className="text-sm">
+          <b>Kime:</b> {tx.toUser?.fullName}
+        </div>
+        {tx.note?.trim() && (
+          <div className="mt-1 text-sm italic text-muted-foreground">Not: {tx.note}</div>
         )}
-        {docCards.map((docCard) => {
-          const tx = docCard.lastTx;
-          const isExpanded = expandedDocNumber === docCard.documentNumber;
-          const timeline = timelineByDoc[docCard.documentNumber];
-          const loadingTimeline = loadingTimelineDoc === docCard.documentNumber;
+      </>
+    );
 
-          const isArchived = isArchivedCard(tx);
+    const DocumentCard = ({ docCard }: { docCard: DocCard }) => {
+      const tx = docCard.lastTx;
+      const isExpanded = expandedDocNumber === docCard.documentNumber;
+      const timeline = timelineByDoc[docCard.documentNumber];
+      const loadingTimeline = loadingTimelineDoc === docCard.documentNumber;
+      const isArchived = isArchivedCard(tx);
 
-          return (
-            <div
-              key={docCard.documentNumber}
-              className={cn(
-                "rounded-lg border overflow-hidden transition-colors hover:bg-muted/30",
-                isArchived && "bg-amber-50/40 border-amber-200/50"
-              )}
-            >
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() =>
-                  setExpandedDocNumber((prev) =>
-                    prev === docCard.documentNumber
-                      ? null
-                      : docCard.documentNumber
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setExpandedDocNumber((prev) =>
-                      prev === docCard.documentNumber
-                        ? null
-                        : docCard.documentNumber
-                    );
-                  }
-                }}
-                className="cursor-pointer p-3 space-y-1"
-              >
-                <div className="flex justify-between items-start gap-2">
-                  <p className="font-medium flex items-center gap-1.5">
-                    {isArchived && (
-                      <Lock
-                        className="h-4 w-4 shrink-0 text-amber-600"
-                        aria-hidden
-                      />
-                    )}
-                    <span>
-                      Evrak No:{" "}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openTimelineModal(docCard.documentNumber);
-                        }}
-                        className="cursor-pointer underline-offset-2 transition-colors hover:underline text-left"
-                      >
-                        {docCard.documentNumber}
-                      </button>
-                    </span>
-                  </p>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge
-                      variant={archiveBadgeVariant(tx)}
-                      className={cn(
-                        "cursor-pointer transition-colors",
-                        isArchived &&
-                          "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100"
-                      )}
-                    >
-                      {archiveBadgeText(tx)}
-                    </Badge>
-                    {isExpanded ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatDateTR(tx.createdAt)}
-                </div>
-                <div className="text-sm">
-                  <b>Kimden:</b> {tx.fromUser?.fullName}
-                </div>
-                <div className="text-sm">
-                  <b>Kime:</b> {tx.toUser?.fullName}
-                </div>
-                {children && (
-                  <div className="pt-2" onClick={(e) => e.stopPropagation()}>
-                    {children(docCard)}
-                  </div>
+      return (
+        <div
+          key={docCard.documentNumber}
+          className={cn(
+            "rounded-lg border overflow-hidden transition-all hover:bg-muted/40 hover:shadow-sm",
+            isArchived && "bg-amber-50/40 border-amber-200/50"
+          )}
+        >
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              setExpandedDocNumber((prev) =>
+                prev === docCard.documentNumber ? null : docCard.documentNumber
+              )
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setExpandedDocNumber((prev) =>
+                  prev === docCard.documentNumber ? null : docCard.documentNumber
+                );
+              }
+            }}
+            className="cursor-pointer p-3 space-y-1"
+          >
+            <div className="flex justify-between items-start gap-2">
+              <p className="font-medium flex items-center gap-1.5">
+                {isArchived && (
+                  <Lock className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                )}
+                <span>
+                  Evrak No:{" "}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openTimelineModal(docCard.documentNumber);
+                    }}
+                    className="cursor-pointer underline-offset-2 transition-colors hover:underline text-left"
+                  >
+                    {docCard.documentNumber}
+                  </button>
+                </span>
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge
+                  variant={archiveBadgeVariant(tx)}
+                  className={cn(
+                    "cursor-pointer transition-colors",
+                    isArchived &&
+                      "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100"
+                  )}
+                >
+                  {archiveBadgeText(tx)}
+                </Badge>
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
-              {isExpanded && (
-                <div className="border-t bg-muted/20 px-3 py-3 sm:px-4">
-                  {loadingTimeline && (
-                    <Timeline items={[]} loading className="text-sm" />
-                  )}
-                  {!loadingTimeline && timeline && timeline.length > 0 && (
-                    <Timeline items={timeline} className="text-sm" />
-                  )}
-                  {!loadingTimeline &&
-                    timeline &&
-                    timeline.length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        Bu evrak için hareket kaydı yok.
-                      </p>
-                    )}
-                </div>
-              )}
             </div>
-          );
-        })}
-      </CardContent>
-    </Card>
-  );
+
+            <DocumentMeta tx={tx} />
+
+            {children && (
+              <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                {children(docCard)}
+              </div>
+            )}
+          </div>
+
+          <div
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+              isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+            )}
+          >
+            <div className="overflow-hidden">
+              <div className="border-t bg-muted/20 px-3 py-3 sm:px-4">
+                {loadingTimeline && <Timeline items={[]} loading className="text-sm" />}
+                {!loadingTimeline && timeline && timeline.length > 0 && (
+                  <Timeline items={timeline} className="text-sm" />
+                )}
+                {!loadingTimeline && timeline && timeline.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Bu evrak için hareket kaydı yok.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <Card className="rounded-xl border shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="font-semibold">{title}</CardTitle>
+          <Badge variant="secondary" className="shrink-0">
+            {docCards.length}
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {docCards.length === 0 && <SectionEmpty />}
+          {docCards.map((docCard) => (
+            <DocumentCard key={docCard.documentNumber} docCard={docCard} />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <main
         className={cn(
-          "mx-auto max-w-7xl space-y-8 px-6 py-8 transition-all duration-300",
-          !loading && (contentVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2")
+          "mx-auto max-w-7xl space-y-8 px-6 py-8 transition-all duration-300 opacity-100 translate-y-0"
         )}
       >
         <div className="flex flex-wrap items-center justify-between gap-4">

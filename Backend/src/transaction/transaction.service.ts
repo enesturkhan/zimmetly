@@ -16,11 +16,12 @@ export class TransactionService {
   // CREATE (Zimmet Oluştur)
   // =====================================================
   async create(
-    dto: { documentNumber: string; toUserId: string },
+    dto: { documentNumber: string; toUserId: string; note?: string },
     fromUserId: string,
   ) {
     const documentNumber = String(dto.documentNumber).trim();
     const toUserId = dto.toUserId;
+    const note = dto.note?.trim();
 
     // 1) Evrak no validasyonu
     if (!/^[0-9]+$/.test(documentNumber)) {
@@ -168,6 +169,18 @@ export class TransactionService {
         },
       });
 
+      if (note && note.length > 0) {
+        await tx.documentNote.create({
+          data: {
+            documentNumber,
+            transactionId: created.id,
+            actionType: DocumentActionType.SEND,
+            note,
+            createdByUserId: fromUserId,
+          },
+        });
+      }
+
       return created;
     });
   }
@@ -186,6 +199,30 @@ export class TransactionService {
         toUser: { select: { id: true, fullName: true, department: true } },
       },
     });
+
+    const txIds = transactions.map((tx) => tx.id);
+    const sendNotes = txIds.length
+      ? await this.prisma.documentNote.findMany({
+          where: {
+            transactionId: { in: txIds },
+            actionType: DocumentActionType.SEND,
+          },
+          select: {
+            transactionId: true,
+            note: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
+
+    const sendNoteMap = new Map<string, string>();
+    for (const n of sendNotes) {
+      if (!n.transactionId) continue;
+      if (!sendNoteMap.has(n.transactionId)) {
+        sendNoteMap.set(n.transactionId, n.note);
+      }
+    }
 
     const documentNumbers = Array.from(
       new Set(transactions.map((tx) => tx.documentNumber)),
@@ -219,6 +256,7 @@ export class TransactionService {
 
     return transactions.map((tx) => ({
       ...tx,
+      note: sendNoteMap.get(tx.id),
       document: docMap.get(tx.documentNumber)
         ? {
             status: docMap.get(tx.documentNumber)?.status,
@@ -246,6 +284,7 @@ export class TransactionService {
           documentNumber: number,
           actionType: {
             in: [
+              DocumentActionType.SEND,
               DocumentActionType.ARCHIVE,
               DocumentActionType.UNARCHIVE,
               DocumentActionType.RETURN,
@@ -262,6 +301,7 @@ export class TransactionService {
     type TimelineItem = {
       type: string;
       id?: string;
+      transactionId?: string;
       createdAt: string;
       archivedAt?: string;
       archivedBy?: { id: string; fullName: string };
@@ -272,6 +312,15 @@ export class TransactionService {
       note?: string;
     };
 
+    const sendNoteMap = new Map<string, string>();
+    for (const n of notes) {
+      if (n.actionType !== DocumentActionType.SEND) continue;
+      if (!n.transactionId) continue;
+      if (!sendNoteMap.has(n.transactionId)) {
+        sendNoteMap.set(n.transactionId, n.note);
+      }
+    }
+
     const transactionItems: TimelineItem[] = transactions.map((tx) => ({
       type: 'TRANSACTION',
       id: tx.id,
@@ -279,9 +328,18 @@ export class TransactionService {
       fromUser: tx.fromUser ?? undefined,
       toUser: tx.toUser ?? undefined,
       status: tx.status,
+      note: sendNoteMap.get(tx.id),
     }));
 
     const noteItems: TimelineItem[] = notes.map((n) => {
+      if (n.actionType === 'SEND') {
+        return {
+          type: 'TRANSACTION_NOTE',
+          transactionId: n.transactionId ?? undefined,
+          createdAt: n.createdAt.toISOString(),
+          note: n.note,
+        };
+      }
       const createdAt = n.createdAt.toISOString();
       const createdBy = n.createdBy
         ? { id: n.createdBy.id, fullName: n.createdBy.fullName }
@@ -312,7 +370,9 @@ export class TransactionService {
       };
     });
 
-    const items = [...transactionItems, ...noteItems].sort(
+    const items = [...transactionItems, ...noteItems]
+      .filter((item) => item.type !== 'TRANSACTION_NOTE')
+      .sort(
       (a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );

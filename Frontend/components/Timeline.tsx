@@ -41,7 +41,7 @@ function statusVariant(
 
 // Shared row styling: padding, hover, focus, mobile-friendly
 const itemBaseClasses =
-  "relative z-10 min-w-0 flex-1 rounded-lg px-3 py-2 sm:px-4 sm:py-3 transition-colors cursor-pointer hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0";
+  "relative z-10 min-w-0 flex-1 rounded-lg px-3.5 py-2.5 sm:px-4 sm:py-3 transition-colors cursor-pointer hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0";
 
 const SKELETON_ROWS = 4;
 
@@ -150,7 +150,7 @@ export function Timeline({ items, className, loading = false }: TimelineProps) {
                     isLast && "border-2 border-blue-200/80 bg-blue-50/60"
                   )}
                 >
-                  <p className="text-sm font-medium text-foreground">{title}</p>
+                  <p className="text-sm font-medium text-foreground break-words">{title}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {formatDate(date)}
                   </p>
@@ -191,10 +191,10 @@ export function Timeline({ items, className, loading = false }: TimelineProps) {
                   className={cn(
                     itemBaseClasses,
                     "border border-amber-200 bg-amber-50/50",
-                    isLast && "border-2 border-amber-200/80 bg-amber-50/60"
+                    isLast && "border-2 border-amber-300/90 bg-amber-50/70"
                   )}
                 >
-                  <p className="text-sm font-medium text-amber-900">{title}</p>
+                  <p className="text-sm font-medium text-amber-900 break-words">{title}</p>
                   <p className="mt-0.5 text-xs text-amber-700/80">
                     {formatDate(date)}
                   </p>
@@ -230,10 +230,10 @@ export function Timeline({ items, className, loading = false }: TimelineProps) {
                   className={cn(
                     itemBaseClasses,
                     "border border-green-200 bg-green-50/50",
-                    isLast && "border-2 border-green-200/80 bg-green-50/60"
+                    isLast && "border-2 border-green-300/90 bg-green-50/70"
                   )}
                 >
-                  <p className="text-sm font-medium text-green-900">{title}</p>
+                  <p className="text-sm font-medium text-green-900 break-words">{title}</p>
                   <p className="mt-0.5 text-xs text-green-700/80">
                     {formatDate(date)}
                   </p>
@@ -268,10 +268,10 @@ export function Timeline({ items, className, loading = false }: TimelineProps) {
                   className={cn(
                     itemBaseClasses,
                     "border border-rose-200 bg-rose-50/50",
-                    isLast && "border-2 border-rose-200/80 bg-rose-50/60"
+                    isLast && "border-2 border-rose-300/90 bg-rose-50/70"
                   )}
                 >
-                  <p className="text-sm font-medium text-rose-900">{title}</p>
+                  <p className="text-sm font-medium text-rose-900 break-words">{title}</p>
                   <p className="mt-0.5 text-xs text-rose-700/80">
                     {formatDate(date)}
                   </p>

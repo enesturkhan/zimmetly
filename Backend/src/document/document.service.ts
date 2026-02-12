@@ -60,7 +60,12 @@ export class DocumentService {
       throw new NotFoundException('Bu numarada evrak bulunamadı');
     }
 
-    return doc;
+    // "En son kimde" her zaman Document.currentHolderId üzerinden; son ACCEPTED transaction sadece timeline içindir.
+    const lastHolder = doc.currentHolder
+      ? { id: doc.currentHolder.id, fullName: doc.currentHolder.fullName }
+      : null;
+
+    return { ...doc, lastHolder };
   }
 
   async archive(number: string, userId: string, dto: ArchiveDocumentDto) {

@@ -203,17 +203,17 @@ export class TransactionService {
     const txIds = transactions.map((tx) => tx.id);
     const sendNotes = txIds.length
       ? await this.prisma.documentNote.findMany({
-          where: {
-            transactionId: { in: txIds },
-            actionType: DocumentActionType.SEND,
-          },
-          select: {
-            transactionId: true,
-            note: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        })
+        where: {
+          transactionId: { in: txIds },
+          actionType: DocumentActionType.SEND,
+        },
+        select: {
+          transactionId: true,
+          note: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      })
       : [];
 
     const sendNoteMap = new Map<string, string>();
@@ -234,13 +234,13 @@ export class TransactionService {
 
     const documents = documentNumbers.length
       ? await this.prisma.document.findMany({
-          where: { number: { in: documentNumbers } },
-          select: {
-            number: true,
-            status: true,
-            currentHolderId: true,
-          },
-        })
+        where: { number: { in: documentNumbers } },
+        select: {
+          number: true,
+          status: true,
+          currentHolderId: true,
+        },
+      })
       : [];
 
     const docMap = new Map(documents.map((doc) => [doc.number, doc]));
@@ -259,8 +259,8 @@ export class TransactionService {
       note: sendNoteMap.get(tx.id),
       document: docMap.get(tx.documentNumber)
         ? {
-            status: docMap.get(tx.documentNumber)?.status,
-          }
+          status: docMap.get(tx.documentNumber)?.status,
+        }
         : undefined,
       isActiveForMe: isActiveForMe(tx),
     }));
@@ -373,9 +373,9 @@ export class TransactionService {
     const items = [...transactionItems, ...noteItems]
       .filter((item) => item.type !== 'TRANSACTION_NOTE')
       .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
 
     return items;
   }

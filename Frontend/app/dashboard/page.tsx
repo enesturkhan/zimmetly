@@ -40,6 +40,8 @@ type DocumentResponse = {
   status?: string;
   archivedAt?: string | null;
   archivedBy?: { id: string; fullName: string } | null;
+  /** Mevcut sahip; evrak sorguda "En son kimde" buradan gelir (currentHolderId ile uyumlu). */
+  lastHolder?: { id: string; fullName: string } | null;
 };
 
 type TimelineItem = {
@@ -202,11 +204,6 @@ function EvrakSonucCard({
   userId,
   onOpenTimeline,
 }: EvrakSonucCardProps) {
-  const lastAccepted = [...timeline]
-    .filter((t) => t.type === "TRANSACTION")
-    .reverse()
-    .find((t) => t.status === "ACCEPTED");
-
   return (
     <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
       {docResult.status === "ARCHIVED" && (
@@ -228,10 +225,10 @@ function EvrakSonucCard({
             {docResult.number}
           </button>
         </p>
-        {lastAccepted && docResult.status !== "ARCHIVED" && (
+        {docResult.lastHolder && docResult.status !== "ARCHIVED" && (
           <Badge>
-            En son kimde: {lastAccepted.toUser?.fullName}
-            {lastAccepted.toUser?.id === userId ? " (sende)" : ""}
+            En son kimde: {docResult.lastHolder.fullName}
+            {docResult.lastHolder.id === userId ? " (sende)" : ""}
           </Badge>
         )}
         {docResult.status === "ARCHIVED" && (

@@ -147,10 +147,19 @@ function DashboardHeader({
   onManageUsers,
   onLogout,
 }: DashboardHeaderProps) {
+  const router = useRouter();
   return (
     <header className="sticky top-0 z-10 h-16 border-b bg-background">
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-        <h1 className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</h1>
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard")}
+          className="flex cursor-pointer items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md -m-1 p-1"
+          aria-label="Dashboard"
+        >
+          <img src="/icon.svg" alt="Zimmetly" className="h-9 w-9 rounded-full" />
+          <span className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</span>
+        </button>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground flex items-center gap-2">
             {user.fullName}
@@ -644,7 +653,10 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-background">
         <header className="sticky top-0 z-10 h-16 border-b bg-background">
           <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-            <h1 className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</h1>
+            <div className="flex items-center gap-2">
+              <img src="/icon.svg" alt="Zimmetly" className="h-9 w-9 rounded-full" />
+              <span className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</span>
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">

@@ -3,9 +3,10 @@ import { TransactionService } from './transaction.service';
 import { TransactionController } from './transaction.controller';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { DocumentModule } from 'src/document/document.module';
+import { NotificationsModule } from 'src/ws/notifications.module';
 
 @Module({
-  imports: [PrismaModule, DocumentModule],
+  imports: [PrismaModule, DocumentModule, NotificationsModule],
   controllers: [TransactionController],
   providers: [TransactionService],
 })

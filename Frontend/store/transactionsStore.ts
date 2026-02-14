@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAuthStore } from "@/store/authStore";
 
 /** Tek kaynak: GET /transactions/me sonucu ve pendingForMeCount. */
 export interface TransactionsState {
@@ -87,6 +88,13 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
         `${process.env.NEXT_PUBLIC_API_URL}/transactions/me`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      if (res.status === 401) {
+        useAuthStore.getState().logout();
+        if (!isPolling) {
+          set({ loading: false, isPendingCountLoading: false });
+        }
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message ?? "Hata");
       const list = Array.isArray(data) ? data : [];

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthGuard } from "@/components/AuthGuard";
 import { PendingCountProvider } from "@/components/PendingCountProvider";
 import { AppNavbar } from "@/components/AppNavbar";
 
@@ -32,10 +33,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <TooltipProvider delayDuration={300}>
-          <PendingCountProvider>
-            <AppNavbar />
-            {children}
-          </PendingCountProvider>
+          <AuthGuard>
+            <PendingCountProvider>
+              <AppNavbar />
+              {children}
+            </PendingCountProvider>
+          </AuthGuard>
         </TooltipProvider>
       </body>
     </html>

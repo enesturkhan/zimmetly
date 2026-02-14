@@ -50,6 +50,7 @@ export default function DocumentDetailPage() {
   const number = params?.number as string | undefined;
 
   const getToken = useAuthStore((s) => s.getToken);
+  const logout = useAuthStore((s) => s.logout);
   const token = useAuthStore((s) => s.token);
   const refresh = useTransactionsStore((s) => s.refresh);
 
@@ -63,14 +64,6 @@ export default function DocumentDetailPage() {
   const [archiveError, setArchiveError] = useState("");
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
-  // Token yoksa login'e yönlendir
-  useEffect(() => {
-    const stored = getToken();
-    if (!stored) {
-      router.replace("/login");
-    }
-  }, [token, getToken, router]);
-
   // Giriş yapan kullanıcı bilgisi
   useEffect(() => {
     const stored = getToken();
@@ -79,10 +72,17 @@ export default function DocumentDetailPage() {
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${stored}` },
     })
-      .then((r) => r.json())
-      .then((u) => u?.id && setCurrentUserId(u.id))
+      .then((r) => {
+        if (r.status === 401) {
+          logout();
+          router.replace("/login");
+          return null;
+        }
+        return r.json();
+      })
+      .then((u) => (u?.id && setCurrentUserId(u.id)))
       .catch(() => {});
-  }, [token, getToken]);
+  }, [token, getToken, logout, router]);
 
   // Doküman detayını çek
   useEffect(() => {
@@ -100,6 +100,13 @@ export default function DocumentDetailPage() {
           headers: { Authorization: `Bearer ${stored}` },
         }
       );
+
+      if (res.status === 401) {
+        logout();
+        router.replace("/login");
+        setLoading(false);
+        return;
+      }
 
       const json = await res.json();
 
@@ -121,6 +128,11 @@ export default function DocumentDetailPage() {
         `${process.env.NEXT_PUBLIC_API_URL}/transactions/document/${docNumber}`,
         { headers: { Authorization: `Bearer ${stored}` } }
       );
+      if (txRes.status === 401) {
+        logout();
+        router.replace("/login");
+        return;
+      }
       const txData = await txRes.json();
       setTimeline(Array.isArray(txData) ? txData : []);
     } catch {
@@ -131,7 +143,7 @@ export default function DocumentDetailPage() {
     }
 
     loadDocument();
-  }, [token, getToken, number]);
+  }, [token, getToken, number, logout, router]);
 
   const handleArchiveConfirm = async () => {
     if (!number || !data || archiveLoading) return;

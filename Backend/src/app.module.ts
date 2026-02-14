@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
 import { TransactionModule } from './transaction/transaction.module';
 import { UserModule } from './user/user.module';
+import { NotificationsModule } from './ws/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { UserModule } from './user/user.module';
     DocumentModule,
     TransactionModule,
     UserModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

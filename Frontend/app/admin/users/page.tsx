@@ -325,25 +325,22 @@ export default function AdminUsersPage() {
   // 1) Yetki kontrolü: /auth/me ile admin mi bak
   useEffect(() => {
     const token = getToken();
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    if (!token) return;
 
     async function fetchMe() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (res.status === 401) {
         logout();
-        router.push("/login");
+        router.replace("/login");
         return;
       }
 
-      // admin değilse dashboarda
+      const data = await res.json();
+      if (!res.ok) return;
+
       if (data.role !== "ADMIN") {
         router.push("/dashboard");
         return;
@@ -365,6 +362,12 @@ export default function AdminUsersPage() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (res.status === 401) {
+        logout();
+        router.replace("/login");
+        return;
+      }
 
       const data = await res.json();
 

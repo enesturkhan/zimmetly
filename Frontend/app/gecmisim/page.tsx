@@ -220,18 +220,22 @@ export default function GecmisimPage() {
 
   useEffect(() => {
     const token = getToken();
-    if (!token) return router.push("/login");
+    if (!token) return;
 
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
-      .then(setMe)
-      .catch(() => {
-        logout();
-        router.push("/login");
-      });
-  }, []);
+      .then((r) => {
+        if (r.status === 401) {
+          logout();
+          router.replace("/login");
+          return null;
+        }
+        return r.json();
+      })
+      .then((u) => (u && setMe(u)))
+      .catch(() => {});
+  }, [getToken, logout, router]);
 
   /* ================= DATA ================= */
 

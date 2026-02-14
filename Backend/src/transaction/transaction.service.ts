@@ -7,10 +7,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentActionType, DocumentStatus, Role, TransactionStatus } from '@prisma/client';
 import { ReturnTransactionDto } from './dto/return-transaction.dto';
+import { NotificationsGateway } from '../ws/notifications.gateway';
 
 @Injectable()
 export class TransactionService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private notificationsGateway: NotificationsGateway,
+  ) {}
 
   // =====================================================
   // CREATE (Zimmet Oluştur)
@@ -181,6 +185,7 @@ export class TransactionService {
         });
       }
 
+      this.notificationsGateway.notifyUser(toUserId);
       return created;
     });
   }
@@ -403,6 +408,7 @@ export class TransactionService {
         data: { currentHolderId: userId },
       });
 
+      this.notificationsGateway.notifyUser(t.fromUserId);
       return { message: 'Zimmet kabul edildi' };
     });
   }
@@ -418,10 +424,12 @@ export class TransactionService {
     if (t.toUserId !== userId)
       throw new ForbiddenException('Bu zimmet sana ait değil');
 
-    return this.prisma.transaction.update({
+    const updated = await this.prisma.transaction.update({
       where: { id },
       data: { status: TransactionStatus.REJECTED },
     });
+    this.notificationsGateway.notifyUser(t.fromUserId);
+    return updated;
   }
 
   // =====================================================
@@ -488,6 +496,7 @@ export class TransactionService {
         },
       });
 
+      this.notificationsGateway.notifyUser(t.fromUserId);
       return { message: 'İade talebi oluşturuldu', data: backTx };
     });
   }

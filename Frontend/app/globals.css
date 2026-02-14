@@ -112,10 +112,89 @@
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+/* Badge loading: scale 1 → 1.08 → 1 */
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Badge ilk veri: scale 1.6 → 1 */
+@keyframes badge-strong-pop {
+  0% {
+    transform: scale(1.6);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Badge 15sn hatırlatma: scale 1.12 → 1 */
+@keyframes badge-remind {
+  0% {
+    transform: scale(1.12);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Kart aksiyon feedback: fade + scale out */
+@keyframes card-feedback {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+
+/* Skeleton shimmer */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    var(--card) 40%,
+    var(--muted) 60%,
+    var(--muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -128,12 +207,15 @@
     scrollbar-width: thin;
     scrollbar-color: var(--muted) transparent;
   }
+
   .scroll-area-timeline::-webkit-scrollbar {
     width: 6px;
   }
+
   .scroll-area-timeline::-webkit-scrollbar-track {
     background: transparent;
   }
+
   .scroll-area-timeline::-webkit-scrollbar-thumb {
     background-color: var(--muted);
     border-radius: 3px;

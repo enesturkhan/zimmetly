@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { useTransactionsStore } from "@/store/transactionsStore";
 import { type AuthState } from "@/store/authStore";
 
 import { Search, Send, History, FileText, Loader2, FileX } from "lucide-react";
@@ -18,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Timeline } from "@/components/Timeline";
+import { Timeline, type TimelineEvent } from "@/components/Timeline";
 import { TimelineModal } from "@/components/TimelineModal";
 
 /* ================= TYPES ================= */
@@ -88,6 +89,148 @@ function statusVariant(status?: string) {
   return "outline";
 }
 
+/**
+ * Geçmişim badge: HER ZAMAN DOM'da ve görünür.
+ * loading → count geçişi SADECE 1 KEZ. Sonrasında loading tamamen ignore.
+ */
+function PendingCountBadgeOrLoader({
+  count,
+  isLoading,
+}: {
+  count: number;
+  isLoading: boolean;
+}) {
+  const loadingOnceRef = useRef(false);
+  if (isLoading === false) loadingOnceRef.current = true;
+
+  const mode: "loading" | "count" | "idle" =
+    isLoading && !loadingOnceRef.current ? "loading" : count > 0 ? "count" : "idle";
+
+  const wasLoadingRef = useRef(true);
+  const [countAnim, setCountAnim] = useState<"strong" | "remind" | "idle">("idle");
+  const prevCountRef = useRef(count);
+
+  useEffect(() => {
+    if (mode !== "count") return;
+    if (wasLoadingRef.current) {
+      wasLoadingRef.current = false;
+      setCountAnim("strong");
+    } else if (count > prevCountRef.current) {
+      setCountAnim("strong");
+    }
+    prevCountRef.current = count;
+  }, [mode, count]);
+
+  useEffect(() => {
+    if (mode === "loading") wasLoadingRef.current = true;
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "count" || countAnim === "idle") return;
+    const t = setTimeout(() => setCountAnim("idle"), 600);
+    return () => clearTimeout(t);
+  }, [mode, countAnim]);
+
+  useEffect(() => {
+    if (mode !== "count") return;
+    const id = setInterval(() => setCountAnim("remind"), 15000);
+    return () => clearInterval(id);
+  }, [mode]);
+
+  // Wrapper scale: HER ZAMAN 1 veya animasyon. opacity-0 ve scale<1 YOK.
+  const wrapperAnimClass =
+    mode === "count" && countAnim === "strong"
+      ? "animate-[badge-strong-pop_0.5s_ease-out]"
+      : mode === "count" && countAnim === "remind"
+        ? "animate-[badge-remind_0.4s_ease-out]"
+        : "scale-100";
+
+  return (
+    <div
+      className={cn(
+        "absolute right-4 top-4 flex items-center justify-center",
+        "min-w-[1.5rem] min-h-5 px-2 py-0.5 rounded-full",
+        "transform-gpu will-change-transform",
+        wrapperAnimClass,
+        mode === "loading" && "bg-muted/50",
+        mode === "count" && "bg-destructive text-white text-xs font-medium",
+        mode === "idle" && "bg-muted/30"
+      )}
+    >
+      {mode === "loading" && (
+        <div
+          className="w-2 h-2 rounded-full bg-muted-foreground/60 opacity-60 shrink-0 transform-gpu will-change-transform animate-[badge-pulse_1.2s_ease-in-out_infinite]"
+          aria-hidden
+        />
+      )}
+      {mode === "count" && <span>{count}</span>}
+      {mode === "idle" && (
+        <div
+          className="w-2 h-2 rounded-full bg-muted-foreground/60 opacity-60 shrink-0"
+          aria-hidden
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Geçmişim badge: iki seviyeli animasyon.
+ * Count arttığında güçlü (scale 150→100), 15sn'de bir hafif hatırlatma (scale 110→100).
+ */
+function PendingCountBadge({ count }: { count: number }) {
+  const [strongKey, setStrongKey] = useState(0);
+  const [remindKey, setRemindKey] = useState(0);
+  const prevCount = useRef(count);
+  const [animType, setAnimType] = useState<"strong" | "remind" | "idle">("idle");
+
+  useEffect(() => {
+    if (count > prevCount.current) {
+      setAnimType("strong");
+      setStrongKey((k) => k + 1);
+    }
+    prevCount.current = count;
+  }, [count]);
+
+  useEffect(() => {
+    if (count <= 0) return;
+    const id = setInterval(() => {
+      setAnimType("remind");
+      setRemindKey((k) => k + 1);
+    }, 15000);
+    return () => clearInterval(id);
+  }, [count]);
+
+  useEffect(() => {
+    if (animType === "idle") return;
+    const t = setTimeout(() => setAnimType("idle"), 600);
+    return () => clearTimeout(t);
+  }, [animType, strongKey, remindKey]);
+
+  const badgeKey = `s${strongKey}-r${remindKey}`;
+  const animClass =
+    animType === "strong"
+      ? "animate-[strong-pop_0.5s_ease-out]"
+      : animType === "remind"
+        ? "animate-[remind-pop_0.4s_ease-out]"
+        : "scale-100";
+
+  return (
+    <Badge
+      key={badgeKey}
+      variant="destructive"
+      className={cn(
+        "absolute right-4 top-4 px-2 py-0.5 text-xs",
+        "transform-gpu will-change-transform",
+        "transition-transform duration-500 ease-out",
+        animClass
+      )}
+    >
+      {count}
+    </Badge>
+  );
+}
+
 type QuickActionCardProps = {
   icon: React.ReactNode;
   title: string;
@@ -131,70 +274,6 @@ function DashboardEmptyState({
       {icon}
       <p className="text-sm text-muted-foreground">{message}</p>
     </div>
-  );
-}
-
-type DashboardHeaderProps = {
-  user: UserMe;
-  logoutLoading: boolean;
-  onManageUsers: () => void;
-  onLogout: () => void;
-};
-
-function DashboardHeader({
-  user,
-  logoutLoading,
-  onManageUsers,
-  onLogout,
-}: DashboardHeaderProps) {
-  const router = useRouter();
-  return (
-    <header className="sticky top-0 z-10 h-16 border-b bg-background">
-      <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard")}
-          className="flex cursor-pointer items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md -m-1 p-1"
-          aria-label="Dashboard"
-        >
-          <img src="/icon.svg" alt="Zimmetly" className="h-9 w-9 rounded-full" />
-          <span className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</span>
-        </button>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground flex items-center gap-2">
-            {user.fullName}
-            {user.role === "ADMIN" && (
-              <Badge
-                variant="outline"
-                className="text-xs font-normal text-muted-foreground border-muted"
-              >
-                Admin
-              </Badge>
-            )}
-          </span>
-          {user.role === "ADMIN" && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="cursor-pointer text-sm underline-offset-2 hover:underline"
-              onClick={onManageUsers}
-              aria-label="Kullanıcı Yönetimi"
-            >
-              Kullanıcı Yönetimi
-            </Button>
-          )}
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={logoutLoading}
-            className="cursor-pointer min-w-[7rem]"
-            onClick={onLogout}
-          >
-            {logoutLoading ? "Çıkılıyor..." : "Çıkış Yap"}
-          </Button>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -261,7 +340,7 @@ function EvrakSonucCard({
 
         {!timelineLoading && timeline.length > 0 && (
           <div className="rounded-xl border bg-background/60 p-4">
-            <Timeline items={timeline} />
+            <Timeline items={timeline as TimelineEvent[]} />
           </div>
         )}
       </div>
@@ -357,11 +436,11 @@ export default function DashboardPage() {
   const router = useRouter();
   const getToken = useAuthStore((s: AuthState) => s.getToken);
   const logout = useAuthStore((s: AuthState) => s.logout);
+  const pendingForMeCount = useTransactionsStore((s) => s.pendingForMeCount);
+  const isPendingCountLoading = useTransactionsStore((s) => s.isPendingCountLoading);
+  const refresh = useTransactionsStore((s) => s.refresh);
 
   const [user, setUser] = useState<UserMe | null>(null);
-  const [logoutLoading, setLogoutLoading] = useState(false);
-
-  const [pendingCount, setPendingCount] = useState(0);
 
   const [docNumber, setDocNumber] = useState("");
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
@@ -407,26 +486,6 @@ export default function DashboardPage() {
         router.push("/login");
       });
   }, [getToken, logout, router]);
-
-  /* ================= PENDING COUNT ================= */
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/me`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!Array.isArray(data)) return;
-        const count = data.filter(
-          (t) =>
-            (t.toUser?.id === user.id || t.toUserId === user.id) &&
-            t.status === "PENDING"
-        ).length;
-        setPendingCount(count);
-      });
-  }, [user?.id, getToken]);
 
   /* ================= USERS ================= */
 
@@ -598,6 +657,8 @@ export default function DashboardPage() {
       setZimmetUserSearch("");
       setZimmetNumber("");
 
+      if (user?.id) refresh(getToken, user.id);
+
       // Timeline'ı yenile
       if (docResult) {
         const txRes = await fetch(
@@ -663,14 +724,6 @@ export default function DashboardPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-10 h-16 border-b bg-background">
-          <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-            <div className="flex items-center gap-2">
-              <img src="/icon.svg" alt="Zimmetly" className="h-9 w-9 rounded-full" />
-              <span className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</span>
-            </div>
-          </div>
-        </header>
         <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
           <div className="space-y-2">
             <div className="h-7 w-56 rounded-md bg-muted animate-pulse" />
@@ -692,17 +745,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader
-        user={user}
-        logoutLoading={logoutLoading}
-        onManageUsers={() => router.push("/admin/users")}
-        onLogout={() => {
-          setLogoutLoading(true);
-          logout();
-          router.push("/login");
-        }}
-      />
-
       <main className="mx-auto max-w-7xl space-y-8 px-6 py-8">
         <section className="grid gap-4 md:grid-cols-3">
           <QuickActionCard
@@ -723,13 +765,11 @@ export default function DashboardPage() {
             description="Tüm işlem geçmişini görüntüle"
             onClick={() => router.push("/gecmisim")}
             badge={
-              pendingCount > 0 ? (
-                <Badge
-                  variant="destructive"
-                  className="absolute right-4 top-4 px-2 py-0.5 text-xs"
-                >
-                  {pendingCount}
-                </Badge>
+              isPendingCountLoading || pendingForMeCount > 0 ? (
+                <PendingCountBadgeOrLoader
+                  count={pendingForMeCount}
+                  isLoading={isPendingCountLoading}
+                />
               ) : undefined
             }
           />
@@ -872,7 +912,7 @@ export default function DashboardPage() {
           open={openTimeline}
           onOpenChange={setOpenTimeline}
           documentNumber={docResult.number}
-          items={timeline}
+          items={timeline as TimelineEvent[]}
           loading={timelineLoading}
         />
       )}

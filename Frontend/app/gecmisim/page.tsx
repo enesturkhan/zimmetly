@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { Loader2, Archive, FileText, ChevronDown, ChevronUp, Lock } from "lucide-react";
+import { useTransactionsStore } from "@/store/transactionsStore";
+import { Loader2, Archive, FileText, ChevronDown, ChevronUp, Lock, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 import { Timeline } from "@/components/Timeline";
@@ -125,10 +126,17 @@ export default function GecmisimPage() {
   const router = useRouter();
   const getToken = useAuthStore((s: any) => s.getToken);
   const logout = useAuthStore((s: any) => s.logout);
+  const transactionsMe = useTransactionsStore((s) => s.transactionsMe);
+  const loading = useTransactionsStore((s) => s.loading);
+  const storeError = useTransactionsStore((s) => s.error);
+  const acceptTransactionLocally = useTransactionsStore((s) => s.acceptTransactionLocally);
+  const rejectTransactionLocally = useTransactionsStore((s) => s.rejectTransactionLocally);
+  const returnTransactionLocally = useTransactionsStore((s) => s.returnTransactionLocally);
+  const archiveTransactionLocally = useTransactionsStore((s) => s.archiveTransactionLocally);
+  const addTransactionLocally = useTransactionsStore((s) => s.addTransactionLocally);
 
   const [me, setMe] = useState<Me | null>(null);
-  const [items, setItems] = useState<TxItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const items = (Array.isArray(transactionsMe) ? transactionsMe : []) as TxItem[];
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [archiveTx, setArchiveTx] = useState<TxItem | null>(null);
@@ -153,6 +161,61 @@ export default function GecmisimPage() {
   const [timelineByDoc, setTimelineByDoc] = useState<Record<string, TimelineEvent[]>>({});
   const [loadingTimelineDoc, setLoadingTimelineDoc] = useState<string | null>(null);
 
+  /* ================= FLIP + FEEDBACK ================= */
+  const pendingFlipRef = useRef<Record<string, number> | null>(null);
+  const [feedbackCard, setFeedbackCard] = useState<{ docNumber: string; type: "accept" | "reject" | "archive" | "return" } | null>(null);
+
+  const capturePositions = () => {
+    const els = document.querySelectorAll("[data-doc-card]");
+    const positions: Record<string, number> = {};
+    els.forEach((el) => {
+      const id = el.getAttribute("data-doc-card");
+      if (id) positions[id] = el.getBoundingClientRect().top;
+    });
+    pendingFlipRef.current = positions;
+  };
+
+  useLayoutEffect(() => {
+    const prev = pendingFlipRef.current;
+    if (!prev) return;
+    pendingFlipRef.current = null;
+    const els = document.querySelectorAll("[data-doc-card]");
+    const toAnimate: { el: Element; deltaY: number }[] = [];
+    els.forEach((el) => {
+      const id = el.getAttribute("data-doc-card");
+      if (!id || prev[id] === undefined) return;
+      const newTop = el.getBoundingClientRect().top;
+      const deltaY = prev[id] - newTop;
+      if (Math.abs(deltaY) > 2) toAnimate.push({ el, deltaY });
+    });
+    toAnimate.forEach(({ el, deltaY }) => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.transform = `translateY(${deltaY}px)`;
+      htmlEl.style.transition = "none";
+    });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        toAnimate.forEach(({ el }) => {
+          const htmlEl = el as HTMLElement;
+          htmlEl.style.transition = "transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+          htmlEl.style.transform = "translateY(0)";
+          const onEnd = () => {
+            htmlEl.style.transition = "";
+            htmlEl.style.transform = "";
+            htmlEl.removeEventListener("transitionend", onEnd);
+          };
+          htmlEl.addEventListener("transitionend", onEnd);
+        });
+      });
+    });
+  });
+
+  useEffect(() => {
+    if (!feedbackCard) return;
+    const t = setTimeout(() => setFeedbackCard(null), 380);
+    return () => clearTimeout(t);
+  }, [feedbackCard]);
+
   /* ================= AUTH ================= */
 
   useEffect(() => {
@@ -171,31 +234,6 @@ export default function GecmisimPage() {
   }, []);
 
   /* ================= DATA ================= */
-
-  const fetchMine = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/transactions/me`,
-        {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setItems(data || []);
-    } catch (e: any) {
-      setError(
-        e?.message ? toUserFriendlyError(e.message) : getNetworkError()
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (me) fetchMine();
-  }, [me]);
 
   useEffect(() => {
     const token = getToken();
@@ -300,7 +338,11 @@ export default function GecmisimPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      fetchMine();
+      capturePositions();
+      if (type === "accept") acceptTransactionLocally(tx.id);
+      else if (type === "reject") rejectTransactionLocally(tx.id);
+      else returnTransactionLocally(tx.id);
+      setFeedbackCard({ docNumber: tx.documentNumber, type: type === "return" ? "return" : type });
     } catch (e: any) {
       setError(toUserFriendlyError(e?.message));
     } finally {
@@ -382,16 +424,9 @@ export default function GecmisimPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === archiveTx.id
-            ? {
-              ...item,
-              document: { ...(item.document ?? {}), status: "ARCHIVED" },
-            }
-            : item
-        )
-      );
+      capturePositions();
+      archiveTransactionLocally(archiveTx.documentNumber);
+      setFeedbackCard({ docNumber: archiveTx.documentNumber, type: "archive" });
       setArchiveTx(null);
       setArchiveNote("");
     } catch (e: any) {
@@ -427,9 +462,11 @@ export default function GecmisimPage() {
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
+      capturePositions();
+      returnTransactionLocally(returnTx.id);
+      setFeedbackCard({ docNumber: returnTx.documentNumber, type: "return" });
       setReturnTx(null);
       setReturnNote("");
-      fetchMine();
     } catch (e: any) {
       setReturnError(e.message || "İade işlemi başarısız");
     } finally {
@@ -441,10 +478,12 @@ export default function GecmisimPage() {
     title,
     docCards,
     children,
+    feedbackCard,
   }: {
     title: string;
     docCards: DocCard[];
     children?: (docCard: DocCard) => React.ReactNode;
+    feedbackCard: { docNumber: string; type: "accept" | "reject" | "archive" | "return" } | null;
   }) => {
     const SectionEmpty = () => (
       <div className="flex flex-col items-center justify-center gap-2 py-8 text-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10">
@@ -477,15 +516,55 @@ export default function GecmisimPage() {
       const timeline = timelineByDoc[docCard.documentNumber];
       const loadingTimeline = loadingTimelineDoc === docCard.documentNumber;
       const isArchived = isArchivedCard(tx);
+      const showFeedback = feedbackCard?.docNumber === docCard.documentNumber;
 
       return (
         <div
           key={docCard.documentNumber}
+          data-doc-card={docCard.documentNumber}
           className={cn(
-            "rounded-lg border overflow-hidden transition-all hover:bg-muted/40 hover:shadow-sm",
+            "relative rounded-lg border overflow-hidden transition-all hover:bg-muted/40 hover:shadow-sm transform-gpu",
             isArchived && "bg-amber-50/40 border-amber-200/50"
           )}
         >
+          {showFeedback && (
+            <div
+              className={cn(
+                "absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/90 animate-[card-feedback_0.38s_ease-out_forwards] pointer-events-none",
+                feedbackCard.type === "accept" && "text-green-600",
+                feedbackCard.type === "reject" && "text-destructive",
+                feedbackCard.type === "archive" && "text-amber-600",
+                feedbackCard.type === "return" && "text-muted-foreground"
+              )}
+            >
+              <div className="flex flex-col items-center gap-1">
+                {feedbackCard.type === "accept" && (
+                  <>
+                    <Check className="h-10 w-10" strokeWidth={2.5} />
+                    <span className="text-sm font-medium">Kabul edildi</span>
+                  </>
+                )}
+                {feedbackCard.type === "reject" && (
+                  <>
+                    <X className="h-10 w-10" strokeWidth={2.5} />
+                    <span className="text-sm font-medium">Reddedildi</span>
+                  </>
+                )}
+                {feedbackCard.type === "archive" && (
+                  <>
+                    <Lock className="h-10 w-10" strokeWidth={2} />
+                    <span className="text-sm font-medium">Arşivlendi</span>
+                  </>
+                )}
+                {feedbackCard.type === "return" && (
+                  <>
+                    <Archive className="h-10 w-10" strokeWidth={2} />
+                    <span className="text-sm font-medium">İade edildi</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           <div
             role="button"
             tabIndex={0}
@@ -561,7 +640,7 @@ export default function GecmisimPage() {
               <div className="border-t bg-muted/20 px-3 py-3 sm:px-4">
                 {loadingTimeline && <Timeline items={[]} loading className="text-sm" />}
                 {!loadingTimeline && timeline && timeline.length > 0 && (
-                  <Timeline items={timeline} className="text-sm" />
+                  <Timeline items={timeline as TimelineEvent[]} className="text-sm" />
                 )}
                 {!loadingTimeline && timeline && timeline.length === 0 && (
                   <p className="text-sm text-muted-foreground">
@@ -627,15 +706,19 @@ export default function GecmisimPage() {
         </div>
 
         {loading && (
-          <div className="space-y-4">
-            <Skeleton className="h-24 w-full rounded-xl" />
-            <Skeleton className="h-40 w-full rounded-xl" />
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="h-[7.5rem] rounded-xl border skeleton-shimmer"
+              />
+            ))}
           </div>
         )}
 
-        {error && (
+        {(error || storeError) && (
           <Alert variant="destructive" className="rounded-lg">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{error || storeError}</AlertDescription>
           </Alert>
         )}
 
@@ -650,7 +733,7 @@ export default function GecmisimPage() {
 
         {!loading && items.length > 0 && (
           <>
-            <Section title="Bana Gelen (Beklemede)" docCards={incomingPendingDocs}>
+            <Section title="Bana Gelen (Beklemede)" docCards={incomingPendingDocs} feedbackCard={feedbackCard}>
               {(docCard) => {
                 const tx = docCard.lastTx;
                 const archived = isArchivedCard(tx);
@@ -708,7 +791,7 @@ export default function GecmisimPage() {
               }}
             </Section>
 
-            <Section title="Kabul Ettiklerim (Bende)" docCards={acceptedByMeDocs}>
+            <Section title="Kabul Ettiklerim (Bende)" docCards={acceptedByMeDocs} feedbackCard={feedbackCard}>
               {(docCard) => {
                 const tx = docCard.lastTx;
                 const isArchived = tx.document?.status === "ARCHIVED";
@@ -812,7 +895,7 @@ export default function GecmisimPage() {
               }}
             </Section>
 
-            <Section title="Gönderdiklerim" docCards={sentByMeDocs} />
+            <Section title="Gönderdiklerim" docCards={sentByMeDocs} feedbackCard={feedbackCard} />
           </>
         )}
       </main>
@@ -1021,9 +1104,13 @@ export default function GecmisimPage() {
                   );
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.message);
+                  const createdTx = data?.transaction ?? data;
+                  if (createdTx) {
+                    capturePositions();
+                    addTransactionLocally(createdTx);
+                  }
                   setAssignTx(null);
                   setAssignNote("");
-                  fetchMine();
                 } catch (e: any) {
                   setAssignError(e.message || "Zimmet işlemi başarısız.");
                 } finally {

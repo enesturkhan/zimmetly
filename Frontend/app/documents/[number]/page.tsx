@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { useTransactionsStore } from "@/store/transactionsStore";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { FileText, Archive } from "lucide-react";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
-import { Timeline } from "@/components/Timeline";
+import { Timeline, type TimelineEvent } from "@/components/Timeline";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +51,7 @@ export default function DocumentDetailPage() {
 
   const getToken = useAuthStore((s) => s.getToken);
   const token = useAuthStore((s) => s.token);
+  const refresh = useTransactionsStore((s) => s.refresh);
 
   const [data, setData] = useState<DocumentDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,6 +165,7 @@ export default function DocumentDetailPage() {
       setData({ ...data, status: "ARCHIVED" });
       setShowArchiveDialog(false);
       setArchiveNote("");
+      if (currentUserId) refresh(getToken, currentUserId);
     } catch {
       setArchiveError("Arşivleme sırasında hata oluştu.");
     } finally {
@@ -251,7 +254,7 @@ export default function DocumentDetailPage() {
                 </p>
               )}
 
-              {timeline.length > 0 && <Timeline items={timeline} />}
+              {timeline.length > 0 && <Timeline items={timeline as TimelineEvent[]} />}
             </div>
           </CardContent>
         </Card>

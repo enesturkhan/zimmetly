@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { useTransactionsStore } from "@/store/transactionsStore";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -19,6 +20,7 @@ type UserOption = {
 export default function ZimmetDetailPage() {
   const router = useRouter();
   const getToken = useAuthStore((s) => s.getToken);
+  const refresh = useTransactionsStore((s) => s.refresh);
 
   const firstInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -217,6 +219,7 @@ export default function ZimmetDetailPage() {
       setUserSearch("");
       setDocNumber("");
       setZimmetNote("");
+      if (currentUserId) refresh(getToken, currentUserId);
     } catch {
       setErrorMsg(getNetworkError());
     } finally {

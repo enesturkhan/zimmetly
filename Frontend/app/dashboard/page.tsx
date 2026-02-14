@@ -389,6 +389,7 @@ export default function DashboardPage() {
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const evrakInputRef = useRef<HTMLDivElement | null>(null);
+  const zimmetInputRef = useRef<HTMLInputElement | null>(null);
 
   /* ================= AUTH ================= */
 
@@ -467,6 +468,16 @@ export default function DashboardPage() {
     }
   }, [showSuccessMessage]);
 
+  // ---- EVRAK BULUNAMAYINCA → Hızlı Zimmet'e focus ----
+  useEffect(() => {
+    if (searchNotFound && docNumber) {
+      const t = setTimeout(() => {
+        zimmetInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [searchNotFound, docNumber]);
+
   // ---- USER FİLTRE (ARAMA) ----
   const filteredUsers = users
     .filter((u) => u.id !== user?.id) // Login kullanıcıyı listeden çıkar
@@ -509,12 +520,13 @@ export default function DashboardPage() {
         setErrorMsg(
           toUserFriendlyError(docData?.message ?? "Evrak bulunamadı.")
         );
+        setZimmetNumber(docNumber); // Evrak yoksa → Hızlı Zimmet'e yaz, kullanıcı direkt zimmet oluştursun
         return;
       }
 
       setSearchNotFound(false);
       setDocResult(docData);
-      setZimmetNumber(docData.number); // bulunan evrak → zimmet numarasına yaz
+      // Evrak VAR: Hızlı zimmet'e otomatik yazma, focus verme (kullanıcı isterse manuel kullanır)
 
       /* 🔹 TIMELINE */
       setTimelineLoading(true);
@@ -751,6 +763,7 @@ export default function DashboardPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Evrak numarası</label>
               <Input
+                ref={zimmetInputRef}
                 placeholder="Evrak numarası"
                 value={zimmetNumber}
                 onChange={(e) => {

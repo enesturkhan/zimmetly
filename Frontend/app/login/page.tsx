@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function LoginPage() {
@@ -19,6 +20,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -67,7 +69,7 @@ export default function LoginPage() {
         return;
       }
 
-      setToken(token);
+      setToken(token, rememberMe);
       router.push("/dashboard");
     } catch (error) {
       console.error(error);
@@ -137,6 +139,21 @@ export default function LoginPage() {
                   disabled={isLoading}
                   className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
                 />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="remember"
+                  checked={rememberMe}
+                  onCheckedChange={setRememberMe}
+                  disabled={isLoading}
+                />
+                <Label
+                  htmlFor="remember"
+                  className="text-sm font-normal cursor-pointer select-none"
+                >
+                  Beni Hatırla
+                </Label>
               </div>
 
               {errorMsg && (

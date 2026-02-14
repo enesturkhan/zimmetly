@@ -48,8 +48,8 @@ export default function DocumentDetailPage() {
   const params = useParams();
   const number = params?.number as string | undefined;
 
+  const getToken = useAuthStore((s) => s.getToken);
   const token = useAuthStore((s) => s.token);
-  const setToken = useAuthStore((s) => s.setToken);
 
   const [data, setData] = useState<DocumentDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,27 +61,17 @@ export default function DocumentDetailPage() {
   const [archiveError, setArchiveError] = useState("");
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
-  // Token'ı localStorage'dan geri yükle
-  useEffect(() => {
-    if (!token) {
-      const stored = localStorage.getItem("access_token");
-      if (stored) {
-        setToken(stored);
-      }
-    }
-  }, [token, setToken]);
-
   // Token yoksa login'e yönlendir
   useEffect(() => {
-    const stored = token || localStorage.getItem("access_token");
+    const stored = getToken();
     if (!stored) {
       router.replace("/login");
     }
-  }, [token, router]);
+  }, [token, getToken, router]);
 
   // Giriş yapan kullanıcı bilgisi
   useEffect(() => {
-    const stored = token || localStorage.getItem("access_token");
+    const stored = getToken();
     if (!stored) return;
 
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
@@ -89,12 +79,12 @@ export default function DocumentDetailPage() {
     })
       .then((r) => r.json())
       .then((u) => u?.id && setCurrentUserId(u.id))
-      .catch(() => { });
-  }, [token]);
+      .catch(() => {});
+  }, [token, getToken]);
 
   // Doküman detayını çek
   useEffect(() => {
-    const stored = token || localStorage.getItem("access_token");
+    const stored = getToken();
     if (!stored || !number) return;
 
     async function loadDocument() {
@@ -139,7 +129,7 @@ export default function DocumentDetailPage() {
     }
 
     loadDocument();
-  }, [token, number]);
+  }, [token, getToken, number]);
 
   const handleArchiveConfirm = async () => {
     if (!number || !data || archiveLoading) return;
@@ -148,7 +138,7 @@ export default function DocumentDetailPage() {
       setArchiveError("Arşivleme notu zorunludur.");
       return;
     }
-    const stored = token || localStorage.getItem("access_token");
+    const stored = getToken();
     if (!stored) return;
 
     setArchiveError("");

@@ -1,41 +1,47 @@
 import { create } from "zustand";
 
+const TOKEN_KEY = "token";
+
 // Auth state yapısı
 export interface AuthState {
   token: string | null;
 
-  // token kaydetme
-  setToken: (token: string) => void;
+  /** token kaydetme - rememberMe: true → localStorage, false → sessionStorage */
+  setToken: (token: string, rememberMe?: boolean) => void;
 
-  // token alma
+  /** token alma - önce localStorage, sonra sessionStorage */
   getToken: () => string | null;
 
-  // çıkış yapma
+  /** çıkış yapma - her iki depodan da siler */
   logout: () => void;
 
-  // uygulama açıldığında localStorage'dan token yükleme
+  /** uygulama açıldığında storage'dan token yükleme */
   initialize: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
 
-  // Login sonrası token kaydet
-  setToken: (token: string) => {
+  setToken: (token: string, rememberMe?: boolean) => {
     set({ token });
-    if (typeof window !== "undefined") {
-      localStorage.setItem("access_token", token);
+    // rememberMe undefined = sadece state güncelle (restore), storage'a dokunma
+    if (typeof window === "undefined" || rememberMe === undefined) return;
+    if (rememberMe) {
+      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(TOKEN_KEY);
     }
   },
 
-  // Token getter
   getToken: () => {
     const token = get().token;
     if (token) return token;
 
-    // Eğer RAM'de yoksa localStorage'dan çek
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("access_token");
+      const saved =
+        localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
       if (saved) {
         set({ token: saved });
         return saved;
@@ -45,18 +51,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return null;
   },
 
-  // Çıkış
   logout: () => {
     set({ token: null });
     if (typeof window !== "undefined") {
-      localStorage.removeItem("access_token");
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
     }
   },
 
-  // Uygulama açılırken token yükle
   initialize: () => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("access_token");
+      const saved =
+        localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
       if (saved) set({ token: saved });
     }
   },

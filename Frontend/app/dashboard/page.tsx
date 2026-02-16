@@ -584,7 +584,6 @@ function EvrakSorguCard({
 export default function DashboardPage() {
   const router = useRouter();
   const getToken = useAuthStore((s: AuthState) => s.getToken);
-  const logout = useAuthStore((s: AuthState) => s.logout);
   const transactionsMe = useTransactionsStore((s) => s.transactionsMe);
   const isPendingCountLoading = useTransactionsStore((s) => s.isPendingCountLoading);
   const refresh = useTransactionsStore((s) => s.refresh);
@@ -630,7 +629,6 @@ export default function DashboardPage() {
     })
       .then((r) => {
         if (r.status === 401) {
-          logout();
           router.replace("/login");
           return null;
         }
@@ -638,7 +636,7 @@ export default function DashboardPage() {
       })
       .then((u) => (u && setUser(u)))
       .catch(() => {});
-  }, [getToken, logout, router]);
+  }, [getToken, router]);
 
   /* ================= USERS ================= */
 

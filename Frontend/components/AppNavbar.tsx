@@ -25,6 +25,7 @@ export function AppNavbar() {
     const t = getToken();
     if (!t) {
       setUser(null);
+      setLogoutLoading(false);
       return;
     }
 
@@ -32,14 +33,21 @@ export function AppNavbar() {
       headers: { Authorization: `Bearer ${t}` },
     })
       .then((r) => r.json())
-      .then((u) => (u?.id ? setUser({ id: u.id, fullName: u.fullName ?? "", role: u.role ?? "USER" }) : setUser(null)))
+      .then((u) => {
+        if (u?.id) {
+          setUser({ id: u.id, fullName: u.fullName ?? "", role: u.role ?? "USER" });
+          setLogoutLoading(false);
+        } else {
+          setUser(null);
+        }
+      })
       .catch(() => setUser(null));
   }, [token, getToken]);
 
   const handleLogout = () => {
     setLogoutLoading(true);
     logout();
-    router.push("/login");
+    router.replace("/login");
   };
 
   return (

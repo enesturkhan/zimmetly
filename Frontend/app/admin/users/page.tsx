@@ -295,7 +295,6 @@ function UsersTable({
 export default function AdminUsersPage() {
   const router = useRouter();
   const getToken = useAuthStore((s: any) => s.getToken);
-  const logout = useAuthStore((s: any) => s.logout);
 
   const [me, setMe] = useState<Me | null>(null);
 
@@ -333,7 +332,6 @@ export default function AdminUsersPage() {
       });
 
       if (res.status === 401) {
-        logout();
         router.replace("/login");
         return;
       }
@@ -350,7 +348,7 @@ export default function AdminUsersPage() {
     }
 
     fetchMe();
-  }, [getToken, logout, router]);
+  }, [getToken, router]);
 
   // 2) Admin users listesi çek
   const fetchUsers = async () => {
@@ -364,7 +362,6 @@ export default function AdminUsersPage() {
       });
 
       if (res.status === 401) {
-        logout();
         router.replace("/login");
         return;
       }

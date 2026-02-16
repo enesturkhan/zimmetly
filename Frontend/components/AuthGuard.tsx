@@ -9,7 +9,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const token = useAuthStore((s) => s.token);
   const getToken = useAuthStore((s) => s.getToken);
-  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
     const t = getToken();
@@ -25,10 +24,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     if (!t) {
-      logout();
       router.replace("/login");
     }
-  }, [pathname, token, getToken, logout, router]);
+  }, [pathname, token, getToken, router]);
 
   return <>{children}</>;
 }

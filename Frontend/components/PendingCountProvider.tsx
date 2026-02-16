@@ -19,7 +19,6 @@ export function PendingCountProvider({
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const getToken = useAuthStore((s) => s.getToken);
-  const logout = useAuthStore((s) => s.logout);
   const refresh = useTransactionsStore((s) => s.refresh);
   const clear = useTransactionsStore((s) => s.clear);
   const [me, setMe] = useState<{ id: string } | null>(null);
@@ -38,7 +37,6 @@ export function PendingCountProvider({
     })
       .then((r) => {
         if (r.status === 401) {
-          logout();
           router.replace("/login");
           return null;
         }
@@ -46,7 +44,7 @@ export function PendingCountProvider({
       })
       .then((u) => (u && u?.id ? setMe({ id: u.id }) : setMe(null)))
       .catch(() => setMe(null));
-  }, [token, getToken, clear, logout, router]);
+  }, [token, getToken, clear, router]);
 
   useEffect(() => {
     if (!token || !me?.id) return;

@@ -134,7 +134,6 @@ export default function GecmisimPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const getToken = useAuthStore((s: any) => s.getToken);
-  const logout = useAuthStore((s: any) => s.logout);
   const transactionsMe = useTransactionsStore((s) => s.transactionsMe);
   const loading = useTransactionsStore((s) => s.loading);
   const storeError = useTransactionsStore((s) => s.error);
@@ -256,7 +255,6 @@ export default function GecmisimPage() {
     })
       .then((r) => {
         if (r.status === 401) {
-          logout();
           router.replace("/login");
           return null;
         }
@@ -264,7 +262,7 @@ export default function GecmisimPage() {
       })
       .then((u) => (u && setMe(u)))
       .catch(() => {});
-  }, [getToken, logout, router]);
+  }, [getToken, router]);
 
   /* ================= DATA ================= */
 

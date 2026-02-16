@@ -50,7 +50,6 @@ export default function DocumentDetailPage() {
   const number = params?.number as string | undefined;
 
   const getToken = useAuthStore((s) => s.getToken);
-  const logout = useAuthStore((s) => s.logout);
   const token = useAuthStore((s) => s.token);
   const refresh = useTransactionsStore((s) => s.refresh);
 
@@ -74,7 +73,6 @@ export default function DocumentDetailPage() {
     })
       .then((r) => {
         if (r.status === 401) {
-          logout();
           router.replace("/login");
           return null;
         }
@@ -82,7 +80,7 @@ export default function DocumentDetailPage() {
       })
       .then((u) => (u?.id && setCurrentUserId(u.id)))
       .catch(() => {});
-  }, [token, getToken, logout, router]);
+  }, [token, getToken, router]);
 
   // Doküman detayını çek
   useEffect(() => {
@@ -102,7 +100,6 @@ export default function DocumentDetailPage() {
       );
 
       if (res.status === 401) {
-        logout();
         router.replace("/login");
         setLoading(false);
         return;
@@ -129,7 +126,6 @@ export default function DocumentDetailPage() {
         { headers: { Authorization: `Bearer ${stored}` } }
       );
       if (txRes.status === 401) {
-        logout();
         router.replace("/login");
         return;
       }
@@ -143,7 +139,7 @@ export default function DocumentDetailPage() {
     }
 
     loadDocument();
-  }, [token, getToken, number, logout, router]);
+  }, [token, getToken, number, router]);
 
   const handleArchiveConfirm = async () => {
     if (!number || !data || archiveLoading) return;

@@ -974,16 +974,27 @@ export default function GecmisimPage() {
           </Alert>
         )}
 
-        {/* Loading */}
+        {/* Loading - Card skeletons matching new design */}
         {loading && (
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="h-[7.5rem] rounded-xl border skeleton-shimmer"
-              />
-            ))}
-          </div>
+          <>
+            {/* Sticky Tabs Skeleton */}
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-6 -mx-6 px-6">
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <Skeleton key={i} className="h-12 w-24 rounded-t-md" />
+                ))}
+              </div>
+            </div>
+            {/* Card Skeletons */}
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 rounded-lg border bg-muted/30 animate-pulse"
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Empty State - No transactions */}
@@ -1001,7 +1012,7 @@ export default function GecmisimPage() {
           <>
             {/* Sticky Tabs */}
             <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-6 -mx-6 px-6">
-              <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+              <div className="flex gap-2 min-w-max">
                 {(Object.keys(tabData) as TabKey[]).map((tabKey) => {
                   const tab = tabData[tabKey];
                   const isActive = activeTab === tabKey;
@@ -1011,7 +1022,7 @@ export default function GecmisimPage() {
                       type="button"
                       onClick={() => setActiveTab(tabKey)}
                       className={cn(
-                        "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-[1px] whitespace-nowrap",
+                        "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-[1px] whitespace-nowrap shrink-0",
                         isActive
                           ? "border-primary text-primary"
                           : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1037,6 +1048,44 @@ export default function GecmisimPage() {
                   message={currentTabData.emptyMessage}
                   icon={currentTabData.emptyIcon}
                 />
+              ) : activeTab === "returned" ? (
+                // İade sekmesi: Alt başlıklar ile ayrım
+                <>
+                  {returnedToMeDocs.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                        <span className="h-px flex-1 bg-border" />
+                        <span>Bana İade Edilenler</span>
+                        <span className="h-px flex-1 bg-border" />
+                      </h3>
+                      {returnedToMeDocs.map((docCard) => (
+                        <DocumentCard
+                          key={docCard.documentNumber}
+                          docCard={docCard}
+                          renderActions={() => renderActionButtons(docCard)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {returnedByMeDocs.length > 0 && (
+                    <div className="space-y-3">
+                      {returnedToMeDocs.length > 0 && (
+                        <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 mt-6">
+                          <span className="h-px flex-1 bg-border" />
+                          <span>İade Ettiklerim</span>
+                          <span className="h-px flex-1 bg-border" />
+                        </h3>
+                      )}
+                      {returnedByMeDocs.map((docCard) => (
+                        <DocumentCard
+                          key={docCard.documentNumber}
+                          docCard={docCard}
+                          renderActions={() => renderActionButtons(docCard)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               ) : (
                 currentTabData.docs.map((docCard) => (
                   <DocumentCard
@@ -1256,7 +1305,10 @@ export default function GecmisimPage() {
                   const createdTx = data?.transaction ?? data;
                   if (createdTx) {
                     capturePositions();
+                    // Update store (for background sync)
                     addTransactionLocally(createdTx);
+                    // INSTANT UI UPDATE: Add to local state immediately
+                    setLocalTransactions((prev) => [...prev, createdTx as TxItem]);
                   }
                   setAssignTx(null);
                   setAssignNote("");

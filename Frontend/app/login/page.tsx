@@ -82,7 +82,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center px-4 py-10">
       {/* Üst marka alanı */}
       <header className="mb-10 flex flex-col items-center text-center">
-        <h1 className="font-semibold tracking-tight text-foreground text-2xl sm:text-3xl">
+        <h1 className="font-semibold tracking-tight text-primary text-2xl sm:text-3xl">
           Zimmetly
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

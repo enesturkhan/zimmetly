@@ -52,7 +52,7 @@ export function AppNavbar() {
           aria-label="Dashboard"
         >
           <img src="/icon.svg" alt="Zimmetly" className="h-9 w-9 rounded-full" />
-          <span className="font-semibold tracking-tight text-xl text-foreground">Zimmetly</span>
+          <span className="font-semibold tracking-tight text-xl text-primary">Zimmetly</span>
         </button>
 
         <div className="flex items-center gap-3">

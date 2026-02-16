@@ -1114,7 +1114,7 @@ export default function GecmisimPage() {
         {loading && (
           <>
             {/* Sticky Tabs Skeleton */}
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-6 -mx-6 px-6">
+            <div className="sticky top-16 z-20 bg-background border-b mb-6 -mx-6 px-6">
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <Skeleton key={i} className="h-12 w-24 rounded-t-md" />
@@ -1147,7 +1147,7 @@ export default function GecmisimPage() {
         {!loading && items.length > 0 && (
           <>
             {/* Sticky Tabs */}
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-6 -mx-6 px-6">
+            <div className="sticky top-16 z-20 bg-background border-b mb-6 -mx-6 px-6">
               <div className="flex gap-2 min-w-max">
                 {(Object.keys(tabData) as TabKey[]).map((tabKey) => {
                   const tab = tabData[tabKey];

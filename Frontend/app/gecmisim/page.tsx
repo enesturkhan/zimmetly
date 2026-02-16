@@ -7,6 +7,7 @@ import { useTransactionsStore } from "@/store/transactionsStore";
 import { Loader2, Archive, FileText, ChevronDown, ChevronUp, Lock, Check, X, Inbox, Package, Send, RotateCcw, Ban, ArchiveIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toUserFriendlyError } from "@/lib/errorMessages";
+import { formatDateTR } from "@/lib/date";
 import { Timeline } from "@/components/Timeline";
 
 import {
@@ -85,14 +86,6 @@ type UserOption = {
 type TabKey = "incoming" | "accepted" | "sent" | "returned" | "rejected" | "archived";
 
 /* ================= HELPERS ================= */
-
-function formatDateTR(iso?: string) {
-  if (!iso) return "-";
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
-}
 
 function statusLabelTR(status?: string) {
   switch (status) {

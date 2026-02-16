@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { ArrowRight, Archive, RotateCcw, Lock, LockOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,16 +113,31 @@ type TimelineProps = {
   loading?: boolean;
 };
 
+/** Event'in sıralama tarihi (ARCHIVED için archivedAt, diğerleri için createdAt) */
+function getSortDate(item: TimelineEvent): number {
+  const d =
+    item.type === "ARCHIVED"
+      ? (item.archivedAt ?? item.createdAt)
+      : item.createdAt;
+  return new Date(d ?? 0).getTime();
+}
+
+/** createdAt ASC - en yeni event en altta (son satır gerçek son durumla örtüşür) */
+function sortByCreatedAt(items: TimelineEvent[]): TimelineEvent[] {
+  return [...items].sort((a, b) => getSortDate(a) - getSortDate(b));
+}
+
 export function Timeline({ items, className, loading = false }: TimelineProps) {
   if (loading) return <TimelineSkeleton />;
   if (items.length === 0) return null;
 
-  const lastIndex = items.length - 1;
+  const sortedItems = useMemo(() => sortByCreatedAt(items), [items]);
+  const lastIndex = sortedItems.length - 1;
 
   return (
     <div className={cn("relative z-0 border-l-2 border-muted pl-1", className)}>
       <ul className="space-y-0">
-        {items.map((item, idx) => {
+        {sortedItems.map((item, idx) => {
           const isFirst = idx === 0;
           const isLast = idx === lastIndex;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactionsStore } from "@/store/transactionsStore";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
@@ -19,6 +19,7 @@ type UserOption = {
 
 export default function ZimmetDetailPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const getToken = useAuthStore((s) => s.getToken);
   const refresh = useTransactionsStore((s) => s.refresh);
 
@@ -43,6 +44,12 @@ export default function ZimmetDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // ---- URL'den evrak numarası (Geçmişim → Tekrar Zimmetle) ----
+  useEffect(() => {
+    const docFromUrl = searchParams.get("documentNumber");
+    if (docFromUrl?.trim()) setDocNumber(docFromUrl.trim());
+  }, [searchParams]);
 
   // ---- INPUT FOCUS ON LOAD ----
   useEffect(() => {

@@ -101,7 +101,11 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
 
       if (isPolling) {
         const pendingForMeCount = computePendingForMe(list, meId);
-        set({ pendingForMeCount, isPendingCountLoading: false });
+        set({
+          transactionsMe: list,
+          pendingForMeCount,
+          isPendingCountLoading: false,
+        });
       } else {
         get().setFromResponse(list, meId);
       }

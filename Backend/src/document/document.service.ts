@@ -113,23 +113,8 @@ export class DocumentService {
         );
       }
 
-      // ✅ Son transaction ACCEPTED ve toUserId === userId olmalı
-      const lastTx = await tx.transaction.findFirst({
-        where: { documentNumber: docNumber },
-        orderBy: { createdAt: 'desc' },
-        select: { status: true, toUserId: true },
-      });
-
-      if (
-        !lastTx ||
-        lastTx.status !== TransactionStatus.ACCEPTED ||
-        lastTx.toUserId !== userId
-      ) {
-        throw new BadRequestException(
-          'Bu evrak yalnızca kabul edilmiş ve sende ise arşivlenebilir.',
-        );
-      }
-
+      // Evrak kimdeyse (currentHolderId === userId) arşivleyebilir.
+      // Transaction status (ACCEPTED / REJECTED / RETURNED) engel değildir.
       const updated = await tx.document.update({
         where: { number: docNumber },
         data: {

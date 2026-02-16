@@ -56,6 +56,7 @@ type TxItem = {
   id: string;
   documentNumber: string;
   status: TxStatus;
+  kind?: "NORMAL" | "RETURN_REQUEST";
   createdAt: string;
   note?: string;
   fromUser?: { id: string; fullName: string };
@@ -84,6 +85,8 @@ type UserOption = {
 };
 
 type TabKey = "incoming" | "accepted" | "sent" | "returned" | "rejected" | "archived";
+type ReturnSubTab = "toMe" | "byMe";
+type RejectSubTab = "toMe" | "byMe";
 
 /* ================= HELPERS ================= */
 
@@ -132,7 +135,7 @@ export default function GecmisimPage() {
   // Local state for instant UI updates (synced with store)
   const [localTransactions, setLocalTransactions] = useState<TxItem[]>([]);
   
-  // Sync localTransactions with store
+  // Sync localTransactions with store - yeni işlem geldiğinde anında UI'ya düşer
   useEffect(() => {
     const storeItems = (Array.isArray(transactionsMe) ? transactionsMe : []) as TxItem[];
     setLocalTransactions(storeItems);
@@ -163,6 +166,8 @@ export default function GecmisimPage() {
   const [timelineByDoc, setTimelineByDoc] = useState<Record<string, TimelineEvent[]>>({});
   const [loadingTimelineDoc, setLoadingTimelineDoc] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("incoming");
+  const [activeReturnSubTab, setActiveReturnSubTab] = useState<ReturnSubTab>("toMe");
+  const [activeRejectSubTab, setActiveRejectSubTab] = useState<RejectSubTab>("toMe");
 
   /* ================= FLIP + FEEDBACK ================= */
   const pendingFlipRef = useRef<Record<string, number> | null>(null);
@@ -283,39 +288,45 @@ export default function GecmisimPage() {
 
   /* ================= FILTERS (6 sekme için) ================= */
 
-  // 1️⃣ Bana Gelen (Bekleyen)
+  // 1️⃣ Bana Gelen (Bekleyen - normal zimmet, iade talebi DEĞİL)
   const incomingPendingDocs = useMemo(
     () =>
       allDocCards.filter(
         (d) =>
-          d.lastTx.toUserId === me?.id && d.lastTx.status === "PENDING"
+          d.lastTx.toUserId === me?.id &&
+          d.lastTx.status === "PENDING" &&
+          d.lastTx.kind !== "RETURN_REQUEST"
       ),
     [allDocCards, me]
   );
 
-  // 2️⃣ Kabul Ettiklerim (Üzerimde)
+  // 2️⃣ Kabul Ettiklerim (status === ACCEPTED && toUserId === me)
   const acceptedByMeDocs = useMemo(
     () =>
       allDocCards.filter(
         (d) =>
-          d.lastTx.status === "ACCEPTED" &&
-          d.lastTx.isActiveForMe === true
+          d.lastTx.status === "ACCEPTED" && d.lastTx.toUserId === me?.id
       ),
-    [allDocCards]
-  );
-
-  // 3️⃣ Gönderdiklerim
-  const sentByMeDocs = useMemo(
-    () => allDocCards.filter((d) => d.lastTx.fromUserId === me?.id),
     [allDocCards, me]
   );
 
-  // 4️⃣ İade Ettiklerim (alt başlıklar: Bana İade Edilenler + İade Ettiklerim)
+  // 3️⃣ Gönderdiklerim (SADECE benim gönderip karşı tarafça kabul edilmiş evraklar)
+  const sentByMeDocs = useMemo(
+    () =>
+      allDocCards.filter(
+        (d) => d.lastTx.fromUserId === me?.id && d.lastTx.status === "ACCEPTED"
+      ),
+    [allDocCards, me]
+  );
+
+  // 4️⃣ İade: "Bana İade Edilenler" = returnBack ile oluşan PENDING iade talepleri (kind=RETURN_REQUEST)
   const returnedToMeDocs = useMemo(
     () =>
       allDocCards.filter(
         (d) =>
-          d.lastTx.status === "RETURNED" && d.lastTx.toUserId === me?.id
+          d.lastTx.status === "PENDING" &&
+          d.lastTx.toUserId === me?.id &&
+          d.lastTx.kind === "RETURN_REQUEST"
       ),
     [allDocCards, me]
   );
@@ -324,7 +335,7 @@ export default function GecmisimPage() {
     () =>
       allDocCards.filter(
         (d) =>
-          d.lastTx.status === "RETURNED" && d.lastTx.fromUserId === me?.id
+          d.lastTx.status === "RETURNED" && d.lastTx.toUserId === me?.id
       ),
     [allDocCards, me]
   );
@@ -335,13 +346,29 @@ export default function GecmisimPage() {
     [returnedToMeDocs, returnedByMeDocs]
   );
 
-  // 5️⃣ Reddedilenler
-  const rejectedDocs = useMemo(
+  // 5️⃣ Red: REJECTED tx'de from=gönderen, to=reddeden. Fatih→Ali, Ali red → from=Fatih, to=Ali
+  // Fatih "Bana Red Edilenler" (benim gönderdiğim reddedildi), Ali "Red Ettiklerim"
+  const rejectedToMeDocs = useMemo(
     () =>
       allDocCards.filter(
-        (d) => d.lastTx.status === "REJECTED" && d.lastTx.toUserId === me?.id
+        (d) =>
+          d.lastTx.status === "REJECTED" && d.lastTx.fromUserId === me?.id
       ),
     [allDocCards, me]
+  );
+
+  const rejectedByMeDocs = useMemo(
+    () =>
+      allDocCards.filter(
+        (d) =>
+          d.lastTx.status === "REJECTED" && d.lastTx.toUserId === me?.id
+      ),
+    [allDocCards, me]
+  );
+
+  const allRejectedDocs = useMemo(
+    () => [...rejectedToMeDocs, ...rejectedByMeDocs],
+    [rejectedToMeDocs, rejectedByMeDocs]
   );
 
   // 6️⃣ Arşivlediklerim (tüm arşivlenmiş evraklar - eski + yeni)
@@ -372,7 +399,7 @@ export default function GecmisimPage() {
       label: "Gönderdiklerim",
       docs: sentByMeDocs,
       icon: <Send className="h-4 w-4" />,
-      emptyMessage: "Henüz başkasına gönderdiğin bir evrak yok",
+      emptyMessage: "Henüz karşı tarafça kabul edilmiş gönderdiğin bir evrak yok",
       emptyIcon: <Send className="h-12 w-12 text-muted-foreground/50" />,
     },
     returned: {
@@ -383,10 +410,10 @@ export default function GecmisimPage() {
       emptyIcon: <RotateCcw className="h-12 w-12 text-muted-foreground/50" />,
     },
     rejected: {
-      label: "Reddedilenler",
-      docs: rejectedDocs,
+      label: "Red",
+      docs: allRejectedDocs,
       icon: <Ban className="h-4 w-4" />,
-      emptyMessage: "Reddettiğin bir evrak yok",
+      emptyMessage: "Henüz red ile ilgili bir evrak yok",
       emptyIcon: <Ban className="h-12 w-12 text-muted-foreground/50" />,
     },
     archived: {
@@ -450,21 +477,24 @@ export default function GecmisimPage() {
       else if (type === "reject") rejectTransactionLocally(tx.id);
       else returnTransactionLocally(tx.id);
       
-      // INSTANT UI UPDATE: Update local state immediately
-      setLocalTransactions((prev) => {
-        return prev.map((item) => {
-          if (item.id === tx.id && updatedTx) {
-            // Use response data if available, otherwise update status locally
-            return {
-              ...item,
-              ...updatedTx,
-              status: type === "accept" ? "ACCEPTED" : type === "reject" ? "REJECTED" : "RETURNED",
-              isActiveForMe: type === "accept" ? true : item.isActiveForMe,
-            } as TxItem;
-          }
-          return item;
-        });
-      });
+      // INSTANT UI UPDATE: Evrak anında mevcut sekmeden çıkar, yeni sekmeye düşer
+      setLocalTransactions((prev) =>
+        prev.map((item) =>
+          item.id === tx.id
+            ? ({
+                ...item,
+                ...(updatedTx && typeof updatedTx === "object" ? updatedTx : {}),
+                status:
+                  type === "accept"
+                    ? "ACCEPTED"
+                    : type === "reject"
+                      ? "REJECTED"
+                      : "RETURNED",
+                isActiveForMe: type === "accept" ? true : false,
+              } as TxItem)
+            : item
+        )
+      );
       
       setFeedbackCard({ docNumber: tx.documentNumber, type: type === "return" ? "return" : type });
     } catch (e: any) {
@@ -553,7 +583,7 @@ export default function GecmisimPage() {
       // Update store (for background sync)
       archiveTransactionLocally(archiveTx.documentNumber);
       
-      // INSTANT UI UPDATE: Update local state immediately
+      // INSTANT UI UPDATE: Arşiv sonrası evrak anında Arşiv sekmesine düşer
       const now = new Date().toISOString();
       setLocalTransactions((prev) => {
         return prev.map((item) => {
@@ -617,7 +647,7 @@ export default function GecmisimPage() {
       // Update store (for background sync)
       returnTransactionLocally(returnTx.id);
       
-      // INSTANT UI UPDATE: Update local state immediately
+      // INSTANT UI UPDATE: İade sonrası evrak anında İade sekmesine düşer
       setLocalTransactions((prev) => {
         return prev.map((item) => {
           if (item.id === returnTx.id) {
@@ -925,6 +955,98 @@ export default function GecmisimPage() {
       );
     }
 
+    // Bana İade Edilenler: PENDING return talepleri → Kabul / Red (Bana Gelen ile aynı)
+    if (activeTab === "returned" && activeReturnSubTab === "toMe") {
+      if (tx.status === "PENDING" && tx.kind === "RETURN_REQUEST") {
+        const loading = actionLoading === tx.id;
+        return (
+          <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+            <Button
+              size="sm"
+              className="cursor-pointer min-w-[7.5rem]"
+              onClick={() => runAction(tx, "accept")}
+              disabled={loading}
+              tabIndex={loading ? -1 : 0}
+              aria-label="İade talebini kabul et"
+            >
+              {loading ? "Kabul ediliyor…" : "Kabul"}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="cursor-pointer min-w-[5rem]"
+              onClick={() => runAction(tx, "reject")}
+              disabled={loading}
+              tabIndex={loading ? -1 : 0}
+              aria-label="İade talebini reddet"
+            >
+              {loading ? "Reddediliyor…" : "Red"}
+            </Button>
+          </div>
+        );
+      }
+    }
+
+    // Red sekmelerinde evrak kullanıcıdaysa: Modal ile Zimmetle + Arşivle
+    if (activeTab === "rejected" && activeRejectSubTab === "toMe") {
+      if (archived) {
+        return (
+          <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => {
+                setAssignTx(tx);
+                setAssignUserId("");
+                setAssignNote("");
+                setAssignError("");
+              }}
+              aria-label="Başkasına zimmetle"
+            >
+              <Send className="mr-2 h-4 w-4" aria-hidden />
+              Başkasına Zimmetle
+            </Button>
+          </div>
+        );
+      }
+      return (
+        <div className="flex flex-wrap gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="cursor-pointer min-w-[10rem]"
+            onClick={() => {
+              setAssignTx(tx);
+              setAssignUserId("");
+              setAssignNote("");
+              setAssignError("");
+            }}
+            aria-label="Başkasına zimmetle"
+          >
+            <Send className="mr-2 h-4 w-4" aria-hidden />
+            Başkasına Zimmetle
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="cursor-pointer min-w-[8.5rem]"
+            onClick={() => {
+              setArchiveTx(tx);
+              setArchiveNote("");
+              setArchiveError("");
+            }}
+            disabled={archiveLoading}
+            tabIndex={archiveLoading ? -1 : 0}
+            aria-label="Arşivle"
+          >
+            <Archive className="mr-2 h-4 w-4" aria-hidden />
+            {archiveLoading ? "Arşivleniyor…" : "Arşivle"}
+          </Button>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -1042,33 +1164,63 @@ export default function GecmisimPage() {
                   icon={currentTabData.emptyIcon}
                 />
               ) : activeTab === "returned" ? (
-                // İade sekmesi: Alt başlıklar ile ayrım
+                // İade sekmesi: Alt sekmeler (tıklamayla tek liste - Bana Gelenler/Kabul Ettiklerim modeli)
                 <>
-                  {returnedToMeDocs.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                        <span className="h-px flex-1 bg-border" />
-                        <span>Bana İade Edilenler</span>
-                        <span className="h-px flex-1 bg-border" />
-                      </h3>
-                      {returnedToMeDocs.map((docCard) => (
-                        <DocumentCard
-                          key={docCard.documentNumber}
-                          docCard={docCard}
-                          renderActions={() => renderActionButtons(docCard)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {returnedByMeDocs.length > 0 && (
-                    <div className="space-y-3">
-                      {returnedToMeDocs.length > 0 && (
-                        <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 mt-6">
-                          <span className="h-px flex-1 bg-border" />
-                          <span>İade Ettiklerim</span>
-                          <span className="h-px flex-1 bg-border" />
-                        </h3>
+                  <div className="flex gap-2 border-b pb-2 -mx-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveReturnSubTab("toMe")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                        activeReturnSubTab === "toMe"
+                          ? "bg-primary/10 text-primary border border-primary/20"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
                       )}
+                    >
+                      Bana İade Edilenler
+                      {returnedToMeDocs.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {returnedToMeDocs.length}
+                        </Badge>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveReturnSubTab("byMe")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                        activeReturnSubTab === "byMe"
+                          ? "bg-primary/10 text-primary border border-primary/20"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      İade Ettiklerim
+                      {returnedByMeDocs.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {returnedByMeDocs.length}
+                        </Badge>
+                      )}
+                    </button>
+                  </div>
+                  {activeReturnSubTab === "toMe" ? (
+                    returnedToMeDocs.length > 0 ? (
+                      <div className="space-y-4">
+                        {returnedToMeDocs.map((docCard) => (
+                          <DocumentCard
+                            key={docCard.documentNumber}
+                            docCard={docCard}
+                            renderActions={() => renderActionButtons(docCard)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState
+                        message="Henüz sana iade edilen bir evrak yok."
+                        icon={<RotateCcw className="h-10 w-10 text-muted-foreground/50" />}
+                      />
+                    )
+                  ) : returnedByMeDocs.length > 0 ? (
+                    <div className="space-y-4">
                       {returnedByMeDocs.map((docCard) => (
                         <DocumentCard
                           key={docCard.documentNumber}
@@ -1077,6 +1229,84 @@ export default function GecmisimPage() {
                         />
                       ))}
                     </div>
+                  ) : (
+                    <EmptyState
+                      message="Henüz iade ettiğin bir evrak yok."
+                      icon={<RotateCcw className="h-10 w-10 text-muted-foreground/50" />}
+                    />
+                  )}
+                </>
+              ) : activeTab === "rejected" ? (
+                // Red sekmesi: Alt sekmeler (tıklamayla tek liste - Bana Gelenler/Kabul Ettiklerim modeli)
+                <>
+                  <div className="flex gap-2 border-b pb-2 -mx-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveRejectSubTab("toMe")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                        activeRejectSubTab === "toMe"
+                          ? "bg-primary/10 text-primary border border-primary/20"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      Bana Red Edilenler
+                      {rejectedToMeDocs.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {rejectedToMeDocs.length}
+                        </Badge>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRejectSubTab("byMe")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                        activeRejectSubTab === "byMe"
+                          ? "bg-primary/10 text-primary border border-primary/20"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      Red Ettiklerim
+                      {rejectedByMeDocs.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {rejectedByMeDocs.length}
+                        </Badge>
+                      )}
+                    </button>
+                  </div>
+                  {activeRejectSubTab === "toMe" ? (
+                    rejectedToMeDocs.length > 0 ? (
+                      <div className="space-y-4">
+                        {rejectedToMeDocs.map((docCard) => (
+                          <DocumentCard
+                            key={docCard.documentNumber}
+                            docCard={docCard}
+                            renderActions={() => renderActionButtons(docCard)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState
+                        message="Henüz sana red edilen bir evrak yok."
+                        icon={<Ban className="h-10 w-10 text-muted-foreground/50" />}
+                      />
+                    )
+                  ) : rejectedByMeDocs.length > 0 ? (
+                    <div className="space-y-4">
+                      {rejectedByMeDocs.map((docCard) => (
+                        <DocumentCard
+                          key={docCard.documentNumber}
+                          docCard={docCard}
+                          renderActions={() => renderActionButtons(docCard)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      message="Henüz reddettiğin bir evrak yok."
+                      icon={<Ban className="h-10 w-10 text-muted-foreground/50" />}
+                    />
                   )}
                 </>
               ) : (
@@ -1298,9 +1528,7 @@ export default function GecmisimPage() {
                   const createdTx = data?.transaction ?? data;
                   if (createdTx) {
                     capturePositions();
-                    // Update store (for background sync)
                     addTransactionLocally(createdTx);
-                    // INSTANT UI UPDATE: Add to local state immediately
                     setLocalTransactions((prev) => [...prev, createdTx as TxItem]);
                   }
                   setAssignTx(null);

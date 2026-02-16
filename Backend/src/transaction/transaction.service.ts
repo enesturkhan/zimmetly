@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentActionType, DocumentStatus, Role, TransactionStatus } from '@prisma/client';
+import { DocumentActionType, DocumentStatus, Role, TransactionStatus, TransactionKind } from '@prisma/client';
 import { ReturnTransactionDto } from './dto/return-transaction.dto';
 import { NotificationsGateway } from '../ws/notifications.gateway';
 
@@ -206,32 +206,48 @@ export class TransactionService {
     });
 
     const txIds = transactions.map((tx) => tx.id);
-    const sendNotes = txIds.length
-      ? await this.prisma.documentNote.findMany({
-        where: {
-          transactionId: { in: txIds },
-          actionType: DocumentActionType.SEND,
-        },
-        select: {
-          transactionId: true,
-          note: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      })
-      : [];
-
-    const sendNoteMap = new Map<string, string>();
-    for (const n of sendNotes) {
-      if (!n.transactionId) continue;
-      if (!sendNoteMap.has(n.transactionId)) {
-        sendNoteMap.set(n.transactionId, n.note);
-      }
-    }
-
     const documentNumbers = Array.from(
       new Set(transactions.map((tx) => tx.documentNumber)),
     );
+    const allNotes =
+      txIds.length > 0 || documentNumbers.length > 0
+        ? await this.prisma.documentNote.findMany({
+            where: {
+              OR: [
+                {
+                  transactionId: { in: txIds },
+                  actionType: DocumentActionType.SEND,
+                },
+                {
+                  documentNumber: { in: documentNumbers },
+                  actionType: DocumentActionType.RETURN,
+                  transactionId: { not: null },
+                },
+              ],
+            },
+            select: {
+              transactionId: true,
+              documentNumber: true,
+              note: true,
+              actionType: true,
+            },
+          })
+        : [];
+
+    const sendNoteMap = new Map<string, string>();
+    const returnNoteMap = new Map<string, string>();
+    for (const n of allNotes) {
+      if (!n.transactionId) continue;
+      if (n.actionType === DocumentActionType.SEND) {
+        if (!sendNoteMap.has(n.transactionId)) {
+          sendNoteMap.set(n.transactionId, n.note);
+        }
+      } else if (n.actionType === DocumentActionType.RETURN) {
+        if (!returnNoteMap.has(n.transactionId)) {
+          returnNoteMap.set(n.transactionId, n.note);
+        }
+      }
+    }
 
     if (documentNumbers.length === 0) {
       return transactions;
@@ -259,9 +275,27 @@ export class TransactionService {
       );
     };
 
+    const getNoteForTx = (tx: (typeof transactions)[0]) => {
+      const sendNote = sendNoteMap.get(tx.id);
+      if (sendNote) return sendNote;
+      const returnNote = returnNoteMap.get(tx.id);
+      if (returnNote) return returnNote;
+      if (tx.kind === TransactionKind.RETURN_REQUEST) {
+        const returnedTx = transactions.find(
+          (t) =>
+            t.documentNumber === tx.documentNumber &&
+            t.status === TransactionStatus.RETURNED &&
+            t.fromUserId === tx.toUserId &&
+            t.toUserId === tx.fromUserId,
+        );
+        if (returnedTx) return returnNoteMap.get(returnedTx.id);
+      }
+      return undefined;
+    };
+
     return transactions.map((tx) => ({
       ...tx,
-      note: sendNoteMap.get(tx.id),
+      note: getNoteForTx(tx),
       document: docMap.get(tx.documentNumber)
         ? {
           status: docMap.get(tx.documentNumber)?.status,
@@ -483,6 +517,7 @@ export class TransactionService {
           fromUserId: t.toUserId,
           toUserId: t.fromUserId,
           status: TransactionStatus.PENDING,
+          kind: TransactionKind.RETURN_REQUEST,
         },
       });
 

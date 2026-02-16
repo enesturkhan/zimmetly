@@ -20,6 +20,11 @@ enum TransactionStatus {
   CANCELLED
 }
 
+enum TransactionKind {
+  NORMAL
+  RETURN_REQUEST
+}
+
 enum DocumentStatus {
   ACTIVE
   ARCHIVED
@@ -91,6 +96,7 @@ model Transaction {
   fromUserId     String
   toUserId       String
   status         TransactionStatus @default(PENDING)
+  kind           TransactionKind   @default(NORMAL)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 

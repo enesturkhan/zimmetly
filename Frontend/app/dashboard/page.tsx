@@ -11,7 +11,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTransactionsStore } from "@/store/transactionsStore";
 import { type AuthState } from "@/store/authStore";
 
-import { Search, Send, History, FileText, Loader2, FileX } from "lucide-react";
+import { Search, Send, History, FileText, Loader2, FileX, Inbox, RotateCcw, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -19,6 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { Timeline, type TimelineEvent } from "@/components/Timeline";
 import { TimelineModal } from "@/components/TimelineModal";
 
@@ -171,6 +177,149 @@ function PendingCountBadgeOrLoader({
         />
       )}
     </div>
+  );
+}
+
+type TxForSummary = {
+  status?: string;
+  kind?: string;
+  fromUserId?: string;
+  fromUser?: { id?: string };
+  toUserId?: string;
+  toUser?: { id?: string };
+  document?: { status?: string };
+};
+
+/**
+ * Geçmişim kartı: İkonlu mini özet (Yeni Zimmet / İade / Red)
+ * transactionsMe üzerinden client-side sayılar hesaplanır.
+ * Her badge tıklanabilir → /gecmisim?tab=... ile ilgili sekmeye gider.
+ */
+function IncomingSummaryBadge({
+  transactions,
+  isLoading,
+  meId,
+  onNavigate,
+}: {
+  transactions: TxForSummary[];
+  isLoading: boolean;
+  meId: string | undefined;
+  onNavigate?: (tab: string) => void;
+}) {
+  const list = Array.isArray(transactions) ? transactions : [];
+
+  const normalIncomingCount = list.filter(
+    (t) =>
+      t.status === "PENDING" &&
+      t.kind !== "RETURN_REQUEST" &&
+      (t.toUserId === meId || t.toUser?.id === meId)
+  ).length;
+
+  const returnIncomingCount = list.filter(
+    (t) =>
+      t.status === "PENDING" &&
+      t.kind === "RETURN_REQUEST" &&
+      (t.toUserId === meId || t.toUser?.id === meId)
+  ).length;
+
+  // Bana red edilen: fromUserId === me (benim gönderdiğim reddedildi). toUserId === me = benim reddettiklerim = SAYILMAZ
+  const rejectedIncomingCount = list.filter(
+    (t) =>
+      t.status === "REJECTED" &&
+      (t.fromUserId === meId || t.fromUser?.id === meId) &&
+      t.document?.status !== "ARCHIVED"
+  ).length;
+
+  const hasAny = normalIncomingCount > 0 || returnIncomingCount > 0 || rejectedIncomingCount > 0;
+
+  if (isLoading) {
+    return (
+      <div className="absolute right-4 top-4 flex items-center gap-1.5">
+        <div
+          className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-[badge-pulse_1.2s_ease-in-out_infinite]"
+          aria-hidden
+        />
+        <div
+          className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-[badge-pulse_1.2s_ease-in-out_infinite] [animation-delay:0.15s]"
+          aria-hidden
+        />
+        <div
+          className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-[badge-pulse_1.2s_ease-in-out_infinite] [animation-delay:0.3s]"
+          aria-hidden
+        />
+      </div>
+    );
+  }
+
+  if (!hasAny) {
+    return null;
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <div className="absolute right-4 top-4 flex items-center gap-2">
+        {normalIncomingCount > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate?.("INCOMING");
+                }}
+                className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-transform hover:scale-105 hover:text-foreground"
+              >
+                <Inbox className="h-3.5 w-3.5" />
+                <span>{normalIncomingCount}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Yeni Zimmetler
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {returnIncomingCount > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate?.("IADE");
+                }}
+                className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-transform hover:scale-105 hover:text-foreground"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>{returnIncomingCount}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              İade Gelenler
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {rejectedIncomingCount > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate?.("RED");
+                }}
+                className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-transform hover:scale-105 hover:text-destructive"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                <span>{rejectedIncomingCount}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Red Gelenler
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -436,7 +585,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const getToken = useAuthStore((s: AuthState) => s.getToken);
   const logout = useAuthStore((s: AuthState) => s.logout);
-  const pendingForMeCount = useTransactionsStore((s) => s.pendingForMeCount);
+  const transactionsMe = useTransactionsStore((s) => s.transactionsMe);
   const isPendingCountLoading = useTransactionsStore((s) => s.isPendingCountLoading);
   const refresh = useTransactionsStore((s) => s.refresh);
 
@@ -769,12 +918,12 @@ export default function DashboardPage() {
             description="Tüm işlem geçmişini görüntüle"
             onClick={() => router.push("/gecmisim")}
             badge={
-              isPendingCountLoading || pendingForMeCount > 0 ? (
-                <PendingCountBadgeOrLoader
-                  count={pendingForMeCount}
-                  isLoading={isPendingCountLoading}
-                />
-              ) : undefined
+              <IncomingSummaryBadge
+                transactions={(transactionsMe || []) as TxForSummary[]}
+                isLoading={isPendingCountLoading}
+                meId={user?.id}
+                onNavigate={(tab) => router.push(`/gecmisim?tab=${tab}`)}
+              />
             }
           />
         </section>

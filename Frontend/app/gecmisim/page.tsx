@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactionsStore } from "@/store/transactionsStore";
 import { Loader2, Archive, FileText, ChevronDown, ChevronUp, Lock, Check, X, Inbox, Package, Send, RotateCcw, Ban, ArchiveIcon } from "lucide-react";
@@ -118,8 +118,21 @@ function statusVariant(
 
 /* ================= PAGE ================= */
 
+const TAB_PARAM_MAP: Record<string, TabKey> = {
+  INCOMING: "incoming",
+  KABUL: "accepted",
+  IADE: "returned",
+  RED: "rejected",
+  ACCEPTED: "accepted",
+  RETURNED: "returned",
+  REJECTED: "rejected",
+  ARCHIVED: "archived",
+  SENT: "sent",
+};
+
 export default function GecmisimPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const getToken = useAuthStore((s: any) => s.getToken);
   const logout = useAuthStore((s: any) => s.logout);
   const transactionsMe = useTransactionsStore((s) => s.transactionsMe);
@@ -168,6 +181,14 @@ export default function GecmisimPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("incoming");
   const [activeReturnSubTab, setActiveReturnSubTab] = useState<ReturnSubTab>("toMe");
   const [activeRejectSubTab, setActiveRejectSubTab] = useState<RejectSubTab>("toMe");
+
+  // URL ?tab=... → ilgili sekme ilk yüklemede aktif
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (!tabParam) return;
+    const mapped = TAB_PARAM_MAP[tabParam.toUpperCase()];
+    if (mapped) setActiveTab(mapped);
+  }, [searchParams]);
 
   /* ================= FLIP + FEEDBACK ================= */
   const pendingFlipRef = useRef<Record<string, number> | null>(null);

@@ -116,6 +116,29 @@
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+/* Login logo giriş animasyonu - sadece Y ekseni, ilk render'da bir kez */
+@keyframes login-logo-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Login logo pulse animasyonu */
+@keyframes logo-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
 /* Badge loading: scale 1 → 1.08 → 1 */
 @keyframes badge-pulse {
   0% {
@@ -201,11 +224,6 @@
 
   body {
     @apply bg-background text-foreground;
-  }
-
-  /* Login sayfasında Navbar'ı gizle */
-  body.login-page header {
-    display: none;
   }
 }
 

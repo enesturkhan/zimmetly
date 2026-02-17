@@ -18,11 +18,54 @@ export default function LoginPage() {
   const setToken = useAuthStore((s) => s.setToken);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Login sayfasında Navbar'ı gizle
+  // Navbar'ı kesinlikle gizle - mount anında ve refresh sırasında
   useEffect(() => {
+    // Mount anında hemen gizle
+    const header = document.querySelector("header");
+    if (header) {
+      header.style.display = "none";
+    }
     document.body.classList.add("login-page");
+    
+    // MutationObserver ile dinamik eklenen navbar'ı da gizle
+    const observer = new MutationObserver(() => {
+      const header = document.querySelector("header");
+      if (header) {
+        header.style.display = "none";
+      }
+    });
+    
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Logo pulse animasyonu için keyframe ekle (sadece bir kez)
+    let style = document.getElementById("login-logo-pulse-style");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "login-logo-pulse-style";
+      style.textContent = `
+        @keyframes logo-pulse {
+          0%, 100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.05);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     return () => {
       document.body.classList.remove("login-page");
+      observer.disconnect();
+      const header = document.querySelector("header");
+      if (header) {
+        header.style.display = "";
+      }
+      // Style tag'i kaldırma - diğer login instance'ları için kalabilir
     };
   }, []);
 
@@ -87,138 +130,150 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md space-y-8">
-        {/* Logo + Zimmetly - Sol üst, form üstünde */}
-        <div className="flex items-center gap-2">
+    <div className="relative flex min-h-screen flex-col items-center justify-center px-4 py-10 overflow-hidden">
+      {/* Logo + Zimmetly - Başlangıçta üstte, loading'de ortaya gelir */}
+      <div
+        className={cn(
+          "flex flex-col items-center gap-4 transition-all duration-500 ease-in-out",
+          isLoading
+            ? "fixed inset-0 z-20 justify-center opacity-100"
+            : "absolute top-10 left-1/2 -translate-x-1/2 opacity-100"
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center gap-3 transition-all duration-500 ease-in-out",
+            isLoading && "[animation:logo-pulse_2s_ease-in-out_infinite]"
+          )}
+        >
           <img
             src="/icon.svg"
             alt="Zimmetly"
-            className="h-9 w-9 rounded-full"
+            className="h-14 w-14 rounded-full"
           />
-          <span className="font-semibold tracking-tight text-xl text-primary">
+          <span className="font-semibold tracking-tight text-2xl text-primary">
             Zimmetly
           </span>
         </div>
 
-        {/* Login card – yukarı kayma animasyonu */}
-        <div
-          className={cn(
-            "w-full transition-all duration-[350ms] ease-in-out",
-            isLoading && "-translate-y-full opacity-0 pointer-events-none"
-          )}
-        >
-        <Card className="rounded-xl border shadow-lg p-8">
-          <CardHeader className="space-y-1 p-0">
-            <CardTitle className="text-xl font-semibold tracking-tight">
-              Giriş
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Hesabınıza giriş yapın
+        {/* Loading spinner - sadece loading state'te görünür */}
+        {isLoading && (
+          <div className="flex flex-col items-center gap-3 animate-in fade-in duration-300">
+            <svg
+              className="h-6 w-6 animate-spin text-primary"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <p className="text-sm font-medium text-muted-foreground">
+              Giriş yapılıyor…
             </p>
-          </CardHeader>
-
-          <form ref={formRef} onSubmit={handleSubmit} className="mt-6">
-            <CardContent className="space-y-4 p-0">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="cursor-default">
-                  E-posta
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="ornek@sirket.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={isLoading}
-                  className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="cursor-default">
-                  Şifre
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={isLoading}
-                  className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={setRememberMe}
-                  disabled={isLoading}
-                />
-                <Label
-                  htmlFor="remember"
-                  className="text-sm font-normal cursor-pointer select-none"
-                >
-                  Beni Hatırla
-                </Label>
-              </div>
-
-              {errorMsg && (
-                <Alert variant="destructive" className="rounded-lg">
-                  <AlertDescription>{errorMsg}</AlertDescription>
-                </Alert>
-              )}
-
-              <Button
-                type="submit"
-                className="w-full cursor-pointer rounded-lg transition-colors hover:opacity-90"
-                disabled={isLoading}
-              >
-                Giriş Yap
-              </Button>
-            </CardContent>
-          </form>
-        </Card>
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Loading overlay – kart kaybolunca ortada spinner */}
-      {isLoading && (
+      {/* Login card container */}
+      <div className="w-full max-w-md">
         <div
-          className="fixed inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-background/80"
-          aria-live="polite"
-          aria-busy="true"
+          className={cn(
+            "transition-all duration-[450ms] ease-in-out",
+            isLoading
+              ? "-translate-y-[40px] scale-[0.95] opacity-0 pointer-events-none"
+              : "translate-y-0 scale-100 opacity-100"
+          )}
         >
-          <svg
-            className="h-10 w-10 animate-spin text-primary"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            aria-hidden
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          <p className="text-sm font-medium text-muted-foreground">
-            Giriş yapılıyor…
-          </p>
+          <Card className="rounded-xl border shadow-lg p-8">
+            <CardHeader className="space-y-1 p-0">
+              <CardTitle className="text-xl font-semibold tracking-tight">
+                Giriş
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Hesabınıza giriş yapın
+              </p>
+            </CardHeader>
+
+            <form ref={formRef} onSubmit={handleSubmit} className="mt-6">
+              <CardContent className="space-y-4 p-0">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="cursor-default">
+                    E-posta
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="ornek@sirket.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={isLoading}
+                    className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="cursor-default">
+                    Şifre
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={isLoading}
+                    className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="remember"
+                    checked={rememberMe}
+                    onCheckedChange={setRememberMe}
+                    disabled={isLoading}
+                  />
+                  <Label
+                    htmlFor="remember"
+                    className="text-sm font-normal cursor-pointer select-none"
+                  >
+                    Beni Hatırla
+                  </Label>
+                </div>
+
+                {errorMsg && (
+                  <Alert variant="destructive" className="rounded-lg">
+                    <AlertDescription>{errorMsg}</AlertDescription>
+                  </Alert>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full cursor-pointer rounded-lg transition-colors hover:opacity-90"
+                  disabled={isLoading}
+                >
+                  Giriş Yap
+                </Button>
+              </CardContent>
+            </form>
+          </Card>
         </div>
-      )}
+      </div>
     </div>
   );
 }

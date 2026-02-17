@@ -338,83 +338,68 @@ export class TransactionService {
     ]);
 
     type TimelineItem = {
-      type: string;
-      id?: string;
-      transactionId?: string;
+      type: 'TRANSACTION';
+      id: string;
       createdAt: string;
-      archivedAt?: string;
-      archivedBy?: { id: string; fullName: string };
-      createdBy?: { id: string; fullName: string };
       fromUser?: { id: string; fullName: string; department: string | null };
       toUser?: { id: string; fullName: string; department: string | null };
-      status?: string;
+      status: string;
       note?: string;
+      returnedAt?: string;
+      returnNote?: string;
+      rejectedAt?: string;
+      rejectNote?: string;
     };
 
     const sendNoteMap = new Map<string, string>();
+    const returnInfoMap = new Map<
+      string,
+      { returnedAt: string; returnNote: string }
+    >();
     for (const n of notes) {
-      if (n.actionType !== DocumentActionType.SEND) continue;
-      if (!n.transactionId) continue;
-      if (!sendNoteMap.has(n.transactionId)) {
-        sendNoteMap.set(n.transactionId, n.note);
+      if (n.actionType === DocumentActionType.SEND) {
+        if (n.transactionId && !sendNoteMap.has(n.transactionId)) {
+          sendNoteMap.set(n.transactionId, n.note);
+        }
+        continue;
+      }
+      if (n.actionType === DocumentActionType.RETURN && n.transactionId) {
+        returnInfoMap.set(n.transactionId, {
+          returnedAt: n.createdAt.toISOString(),
+          returnNote: n.note,
+        });
+        continue;
       }
     }
 
-    const transactionItems: TimelineItem[] = transactions.map((tx) => ({
-      type: 'TRANSACTION',
-      id: tx.id,
-      createdAt: tx.createdAt.toISOString(),
-      fromUser: tx.fromUser ?? undefined,
-      toUser: tx.toUser ?? undefined,
-      status: tx.status,
-      note: sendNoteMap.get(tx.id),
-    }));
+    // Sadece TRANSACTION: RETURN_REQUEST eklenmez; RETURN/REJECT/ARCHIVE ayrı item üretilmez
+    const transactionItems: TimelineItem[] = transactions
+      .filter((tx) => tx.kind !== TransactionKind.RETURN_REQUEST)
+      .map((tx) => {
+        const returnInfo =
+          tx.status === TransactionStatus.RETURNED
+            ? returnInfoMap.get(tx.id)
+            : undefined;
+        const isRejected = tx.status === TransactionStatus.REJECTED;
+        return {
+          type: 'TRANSACTION',
+          id: tx.id,
+          createdAt: tx.createdAt.toISOString(),
+          fromUser: tx.fromUser ?? undefined,
+          toUser: tx.toUser ?? undefined,
+          status: tx.status,
+          note: sendNoteMap.get(tx.id),
+          returnedAt: returnInfo?.returnedAt,
+          returnNote: returnInfo?.returnNote,
+          rejectedAt: isRejected ? tx.updatedAt.toISOString() : undefined,
+          rejectNote: undefined,
+        };
+      });
 
-    const noteItems: TimelineItem[] = notes.map((n) => {
-      if (n.actionType === 'SEND') {
-        return {
-          type: 'TRANSACTION_NOTE',
-          transactionId: n.transactionId ?? undefined,
-          createdAt: n.createdAt.toISOString(),
-          note: n.note,
-        };
-      }
-      const createdAt = n.createdAt.toISOString();
-      const createdBy = n.createdBy
-        ? { id: n.createdBy.id, fullName: n.createdBy.fullName }
-        : undefined;
-      if (n.actionType === 'ARCHIVE') {
-        return {
-          type: 'ARCHIVED',
-          createdAt,
-          archivedAt: createdAt,
-          archivedBy: createdBy,
-          note: n.note,
-        };
-      }
-      if (n.actionType === 'UNARCHIVE') {
-        return {
-          type: 'UNARCHIVED',
-          createdAt,
-          createdBy,
-          note: n.note || undefined,
-        };
-      }
-      // RETURN
-      return {
-        type: 'RETURN',
-        createdAt,
-        createdBy,
-        note: n.note,
-      };
-    });
-
-    const items = [...transactionItems, ...noteItems]
-      .filter((item) => item.type !== 'TRANSACTION_NOTE')
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
+    const items = transactionItems.sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
 
     return items;
   }

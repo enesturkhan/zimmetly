@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, KeyboardEvent, useRef } from "react";
+import { useState, FormEvent, KeyboardEvent, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,14 @@ export default function LoginPage() {
   const router = useRouter();
   const setToken = useAuthStore((s) => s.setToken);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Login sayfasında Navbar'ı gizle
+  useEffect(() => {
+    document.body.classList.add("login-page");
+    return () => {
+      document.body.classList.remove("login-page");
+    };
+  }, []);
 
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -79,24 +87,27 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center px-4 py-10">
-      {/* Üst marka alanı */}
-      <header className="mb-10 flex flex-col items-center text-center">
-        <h1 className="font-semibold tracking-tight text-primary text-2xl sm:text-3xl">
-          Zimmetly
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Evrak ve zimmet süreçlerini tek yerden yönetin
-        </p>
-      </header>
+    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md space-y-8">
+        {/* Logo + Zimmetly - Sol üst, form üstünde */}
+        <div className="flex items-center gap-2">
+          <img
+            src="/icon.svg"
+            alt="Zimmetly"
+            className="h-9 w-9 rounded-full"
+          />
+          <span className="font-semibold tracking-tight text-xl text-primary">
+            Zimmetly
+          </span>
+        </div>
 
-      {/* Login card – yukarı kayma animasyonu */}
-      <div
-        className={cn(
-          "w-full max-w-md transition-all duration-[350ms] ease-in-out",
-          isLoading && "-translate-y-full opacity-0 pointer-events-none"
-        )}
-      >
+        {/* Login card – yukarı kayma animasyonu */}
+        <div
+          className={cn(
+            "w-full transition-all duration-[350ms] ease-in-out",
+            isLoading && "-translate-y-full opacity-0 pointer-events-none"
+          )}
+        >
         <Card className="rounded-xl border shadow-lg p-8">
           <CardHeader className="space-y-1 p-0">
             <CardTitle className="text-xl font-semibold tracking-tight">
@@ -172,6 +183,7 @@ export default function LoginPage() {
             </CardContent>
           </form>
         </Card>
+        </div>
       </div>
 
       {/* Loading overlay – kart kaybolunca ortada spinner */}

@@ -202,6 +202,11 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Login sayfasında Navbar'ı gizle */
+  body.login-page header {
+    display: none;
+  }
 }
 
 /* Timeline / modal scroll: ince scrollbar, yumuşak kaydırma */

@@ -143,6 +143,9 @@ export default function GecmisimPage() {
   const archiveTransactionLocally = useTransactionsStore((s) => s.archiveTransactionLocally);
   const addTransactionLocally = useTransactionsStore((s) => s.addTransactionLocally);
   const markSeen = useTransactionsStore((s) => s.markSeen);
+  const unreadIncomingCount = useTransactionsStore((s) => s.unreadIncomingCount);
+  const unreadReturnedCount = useTransactionsStore((s) => s.unreadReturnedCount);
+  const unreadRejectedCount = useTransactionsStore((s) => s.unreadRejectedCount);
 
   const [me, setMe] = useState<Me | null>(null);
   // Local state for instant UI updates (synced with store)
@@ -1166,6 +1169,15 @@ export default function GecmisimPage() {
                 {(Object.keys(tabData) as TabKey[]).map((tabKey) => {
                   const tab = tabData[tabKey];
                   const isActive = activeTab === tabKey;
+                  const unreadCount =
+                    tabKey === "incoming"
+                      ? unreadIncomingCount
+                      : tabKey === "returned"
+                        ? unreadReturnedCount
+                        : tabKey === "rejected"
+                          ? unreadRejectedCount
+                          : 0;
+                  const hasUnread = unreadCount > 0;
                   return (
                     <button
                       key={tabKey}
@@ -1175,15 +1187,23 @@ export default function GecmisimPage() {
                         "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-[1px] whitespace-nowrap shrink-0",
                         isActive
                           ? "border-primary text-primary"
-                          : "border-transparent text-muted-foreground hover:text-foreground"
+                          : hasUnread
+                            ? "border-transparent text-destructive hover:text-destructive"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
                       )}
                     >
                       {tab.icon}
                       <span>{tab.label}</span>
                       {tab.docs.length > 0 && (
-                        <Badge variant="secondary" className="ml-1 text-xs">
-                          {tab.docs.length}
-                        </Badge>
+                        hasUnread ? (
+                          <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border-0 bg-destructive px-1.5 text-[10px] font-medium text-white animate-pulse">
+                            {tab.docs.length}
+                          </span>
+                        ) : (
+                          <Badge variant="secondary" className="ml-1 text-xs">
+                            {tab.docs.length}
+                          </Badge>
+                        )
                       )}
                     </button>
                   );

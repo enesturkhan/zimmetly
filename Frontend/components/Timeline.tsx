@@ -5,14 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-function formatDate(iso?: string) {
-  if (!iso) return "-";
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
-}
+import { FormattedDate } from "@/components/FormattedDate";
 
 function statusLabelTR(status?: string) {
   switch (status) {
@@ -179,21 +172,21 @@ export function Timeline({ items, className, loading = false }: TimelineProps) {
                   {hasTwoDates ? (
                     <>
                       <p className={dateTextClass}>
-                        Zimmet: {formatDate(date)}
+                        Zimmet: <FormattedDate iso={date} />
                       </p>
                       {isReturned && returnedAt && (
                         <p className={dateTextClass}>
-                          İade: {formatDate(returnedAt)}
+                          İade: <FormattedDate iso={returnedAt} />
                         </p>
                       )}
                       {isRejected && rejectedAt && (
                         <p className={dateTextClass}>
-                          Red: {formatDate(rejectedAt)}
+                          Red: <FormattedDate iso={rejectedAt} />
                         </p>
                       )}
                     </>
                   ) : (
-                    <p className={dateTextClass}>{formatDate(date)}</p>
+                    <p className={dateTextClass}><FormattedDate iso={date} /></p>
                   )}
                 </div>
                 {item.status && (

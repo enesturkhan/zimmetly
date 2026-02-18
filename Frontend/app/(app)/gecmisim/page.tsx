@@ -7,7 +7,7 @@ import { useTransactionsStore } from "@/store/transactionsStore";
 import { Loader2, Archive, FileText, ChevronDown, ChevronUp, Lock, Check, X, Inbox, Package, Send, RotateCcw, Ban, ArchiveIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toUserFriendlyError } from "@/lib/errorMessages";
-import { formatDateTR } from "@/lib/date";
+import { FormattedDate } from "@/components/FormattedDate";
 import { Timeline } from "@/components/Timeline";
 
 import {
@@ -142,6 +142,7 @@ export default function GecmisimPage() {
   const returnTransactionLocally = useTransactionsStore((s) => s.returnTransactionLocally);
   const archiveTransactionLocally = useTransactionsStore((s) => s.archiveTransactionLocally);
   const addTransactionLocally = useTransactionsStore((s) => s.addTransactionLocally);
+  const refresh = useTransactionsStore((s) => s.refresh);
   const markSeen = useTransactionsStore((s) => s.markSeen);
   const unreadIncomingCount = useTransactionsStore((s) => s.unreadIncomingCount);
   const unreadReturnedCount = useTransactionsStore((s) => s.unreadReturnedCount);
@@ -361,11 +362,13 @@ export default function GecmisimPage() {
     [allDocCards, me]
   );
   
+  // İade Ettiklerim: history'de RETURNED tx var ve fromUserId=me (ben iade ettim)
   const returnedByMeDocs = useMemo(
     () =>
-      allDocCards.filter(
-        (d) =>
-          d.lastTx.status === "RETURNED" && d.lastTx.toUserId === me?.id
+      allDocCards.filter((d) =>
+        d.history.some(
+          (tx) => tx.status === "RETURNED" && tx.fromUserId === me?.id
+        )
       ),
     [allDocCards, me]
   );
@@ -377,21 +380,24 @@ export default function GecmisimPage() {
   );
 
   // 5️⃣ Red: REJECTED tx'de from=gönderen, to=reddeden. Fatih→Ali, Ali red → from=Fatih, to=Ali
-  // Fatih "Bana Red Edilenler" (benim gönderdiğim reddedildi), Ali "Red Ettiklerim"
+  // Bana Red Edilenler: history'de REJECTED var ve fromUserId=me
+  // Reddettiklerim: history'de REJECTED var ve toUserId=me
   const rejectedToMeDocs = useMemo(
     () =>
-      allDocCards.filter(
-        (d) =>
-          d.lastTx.status === "REJECTED" && d.lastTx.fromUserId === me?.id
+      allDocCards.filter((d) =>
+        d.history.some(
+          (tx) => tx.status === "REJECTED" && tx.fromUserId === me?.id
+        )
       ),
     [allDocCards, me]
   );
 
   const rejectedByMeDocs = useMemo(
     () =>
-      allDocCards.filter(
-        (d) =>
-          d.lastTx.status === "REJECTED" && d.lastTx.toUserId === me?.id
+      allDocCards.filter((d) =>
+        d.history.some(
+          (tx) => tx.status === "REJECTED" && tx.toUserId === me?.id
+        )
       ),
     [allDocCards, me]
   );
@@ -497,36 +503,15 @@ export default function GecmisimPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       
-      // Get updated transaction from response if available
-      const updatedTx = data?.transaction || data;
-      
       capturePositions();
       
-      // Update store (for background sync)
-      if (type === "accept") acceptTransactionLocally(tx.id);
-      else if (type === "reject") rejectTransactionLocally(tx.id);
-      else returnTransactionLocally(tx.id);
-      
-      // INSTANT UI UPDATE: Evrak anında mevcut sekmeden çıkar, yeni sekmeye düşer
-      setLocalTransactions((prev) =>
-        prev.map((item) =>
-          item.id === tx.id
-            ? ({
-                ...item,
-                ...(updatedTx && typeof updatedTx === "object" ? updatedTx : {}),
-                status:
-                  type === "accept"
-                    ? "ACCEPTED"
-                    : type === "reject"
-                      ? "REJECTED"
-                      : "RETURNED",
-                isActiveForMe: type === "accept" ? true : false,
-              } as TxItem)
-            : item
-        )
-      );
+      // Store'a yeni tx ekle (zincir modeli - her aksiyon ayrı kayıt)
+      if (type === "accept") acceptTransactionLocally(tx);
+      else if (type === "reject") rejectTransactionLocally(tx);
+      else returnTransactionLocally(tx, data?.data);
       
       setFeedbackCard({ docNumber: tx.documentNumber, type: type === "return" ? "return" : type });
+      if (me?.id) refresh(getToken, me.id, "action");
     } catch (e: any) {
       setError(toUserFriendlyError(e?.message));
     } finally {
@@ -669,30 +654,13 @@ export default function GecmisimPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       
-      // Get updated transaction from response if available
-      const updatedTx = data?.transaction || data;
-      
       capturePositions();
       
-      // Update store (for background sync)
-      returnTransactionLocally(returnTx.id);
-      
-      // INSTANT UI UPDATE: İade sonrası evrak anında İade sekmesine düşer
-      setLocalTransactions((prev) => {
-        return prev.map((item) => {
-          if (item.id === returnTx.id) {
-            return {
-              ...item,
-              ...updatedTx,
-              status: "RETURNED",
-              isActiveForMe: false,
-            } as TxItem;
-          }
-          return item;
-        });
-      });
+      // Store'a RETURNED + RETURN_REQUEST ekle (zincir modeli)
+      returnTransactionLocally(returnTx, data?.data);
       
       setFeedbackCard({ docNumber: returnTx.documentNumber, type: "return" });
+      if (me?.id) refresh(getToken, me.id, "action");
       setReturnTx(null);
       setReturnNote("");
     } catch (e: any) {
@@ -806,7 +774,7 @@ export default function GecmisimPage() {
                 </span>
               </p>
               <div className="text-xs text-muted-foreground mb-2">
-                {formatDateTR(tx.createdAt)}
+                <FormattedDate iso={tx.createdAt} />
               </div>
               <div className="text-sm space-y-1">
                 <div>

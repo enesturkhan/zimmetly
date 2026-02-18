@@ -92,7 +92,7 @@ model DocumentNote {
 
 model Transaction {
   id             String            @id @default(uuid())
-  documentNumber String
+  documentNumber String // UNIQUE değil - aynı evrak için birden fazla transaction (zimmet zinciri)
   fromUserId     String
   toUserId       String
   status         TransactionStatus @default(PENDING)

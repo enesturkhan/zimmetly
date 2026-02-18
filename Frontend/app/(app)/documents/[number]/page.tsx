@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, Archive } from "lucide-react";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 import { Timeline, type TimelineEvent } from "@/components/Timeline";
+import { FormattedDate } from "@/components/FormattedDate";
 import {
   Dialog,
   DialogContent,
@@ -222,9 +223,7 @@ export default function DocumentDetailPage() {
                 <p>Arşivleyen: {data.archivedBy?.fullName ?? "-"}</p>
                 <p>
                   Tarih:{" "}
-                  {data.archivedAt
-                    ? new Date(data.archivedAt).toLocaleString("tr-TR")
-                    : "-"}
+                  <FormattedDate iso={data.archivedAt} />
                 </p>
               </div>
             )}

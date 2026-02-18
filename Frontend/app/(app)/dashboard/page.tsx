@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Timeline, type TimelineEvent } from "@/components/Timeline";
 import { TimelineModal } from "@/components/TimelineModal";
+import { FormattedDate } from "@/components/FormattedDate";
 
 /* ================= TYPES ================= */
 
@@ -62,14 +63,6 @@ type TimelineItem = {
 };
 
 /* ================= HELPERS ================= */
-
-function formatDateTR(iso?: string) {
-  if (!iso) return "-";
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
-}
 
 function statusLabelTR(status?: string) {
   switch (status) {
@@ -531,7 +524,7 @@ function EvrakSonucCard({
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
           <p className="font-medium">Bu evrak arşivlenmiştir</p>
           <p>Arşivleyen: {docResult.archivedBy?.fullName ?? "-"}</p>
-          <p>Tarih: {docResult.archivedAt ? formatDateTR(docResult.archivedAt) : "-"}</p>
+          <p>Tarih: <FormattedDate iso={docResult.archivedAt} /></p>
         </div>
       )}
 
@@ -709,6 +702,17 @@ export default function DashboardPage() {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
 
+  // Evrak başkasında zimmetliyse (sorgu sonucundan)
+  const isDocumentLocked =
+    !!user &&
+    !!docResult &&
+    !!docResult.lastHolder &&
+    docResult.lastHolder.id !== user.id &&
+    docResult.status !== "ARCHIVED";
+  const lockedByUser = isDocumentLocked ? docResult!.lastHolder!.fullName : "";
+  const lockedDocNumber = isDocumentLocked ? docResult!.number : "";
+  const isZimmetFormLocked = isDocumentLocked && zimmetNumber === lockedDocNumber;
+
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const evrakInputRef = useRef<HTMLDivElement | null>(null);
   const zimmetInputRef = useRef<HTMLInputElement | null>(null);
@@ -783,6 +787,13 @@ export default function DashboardPage() {
     }
   }, [searchNotFound, docNumber]);
 
+  // Evrak başkasında zimmetliyse kullanıcı seçim dropdown'unu kapat
+  useEffect(() => {
+    if (isZimmetFormLocked) {
+      setIsUserDropdownOpen(false);
+    }
+  }, [isZimmetFormLocked]);
+
   // ---- USER FİLTRE (ARAMA) ----
   const filteredUsers = users
     .filter((u) => u.id !== user?.id) // Login kullanıcıyı listeden çıkar
@@ -831,7 +842,13 @@ export default function DashboardPage() {
 
       setSearchNotFound(false);
       setDocResult(docData);
-      // Evrak VAR: Hızlı zimmet'e otomatik yazma, focus verme (kullanıcı isterse manuel kullanır)
+      const isLocked =
+        docData.lastHolder &&
+        docData.lastHolder.id !== user?.id &&
+        docData.status !== "ARCHIVED";
+      if (isLocked) {
+        setZimmetNumber(docData.number);
+      }
 
       /* 🔹 TIMELINE */
       setTimelineLoading(true);
@@ -1051,6 +1068,17 @@ export default function DashboardPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
+            {isZimmetFormLocked && (
+              <Alert
+                className="rounded-lg border-amber-200 bg-amber-50 text-amber-900 [&>svg]:text-amber-600"
+              >
+                <AlertDescription>
+                  Bu evrak şu anda <strong>{lockedByUser}</strong> üzerinde zimmetlidir.
+                  Kabul edilmeden veya iade edilmeden yeniden zimmetlenemez.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Evrak numarası</label>
               <Input
@@ -1064,7 +1092,7 @@ export default function DashboardPage() {
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (zimmetNumber && zimmetUserId) handleZimmet();
+                    if (zimmetNumber && zimmetUserId && !isZimmetFormLocked) handleZimmet();
                   }
                 }}
                 className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
@@ -1077,15 +1105,20 @@ export default function DashboardPage() {
                 placeholder="İsim veya departman ile ara"
                 value={zimmetUserSearch}
                 onChange={(e) => {
+                  if (isZimmetFormLocked) return;
                   setZimmetUserSearch(e.target.value);
                   setIsUserDropdownOpen(true);
                   setHighlightIndex(0);
                 }}
-                onFocus={() => setIsUserDropdownOpen(true)}
+                onFocus={() => !isZimmetFormLocked && setIsUserDropdownOpen(true)}
                 onKeyDown={handleUserInputKeyDown}
-                className="rounded-lg transition-colors focus-visible:ring-2 cursor-pointer"
+                disabled={isZimmetFormLocked}
+                className={cn(
+                  "rounded-lg transition-colors focus-visible:ring-2 cursor-pointer",
+                  isZimmetFormLocked && "cursor-not-allowed opacity-60"
+                )}
               />
-              {isUserDropdownOpen && filteredUsers.length > 0 && (
+              {!isZimmetFormLocked && isUserDropdownOpen && filteredUsers.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border bg-card shadow-md">
                   {filteredUsers.map((u, index) => (
                     <div
@@ -1112,13 +1145,34 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <Button
-              onClick={() => handleZimmet()}
-              disabled={isZimmetLoading}
-              className="w-full cursor-pointer rounded-lg transition-colors"
-            >
-              {isZimmetLoading ? "Zimmetleniyor..." : "Zimmetle"}
-            </Button>
+            {isZimmetFormLocked ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="block w-full">
+                      <Button
+                        onClick={() => {}}
+                        disabled
+                        className="w-full cursor-not-allowed rounded-lg transition-colors"
+                      >
+                        Zimmetle
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Evrak başka bir kullanıcıda
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                onClick={() => handleZimmet()}
+                disabled={isZimmetLoading}
+                className="w-full cursor-pointer rounded-lg transition-colors"
+              >
+                {isZimmetLoading ? "Zimmetleniyor..." : "Zimmetle"}
+              </Button>
+            )}
 
             {zimmetError && (
               <Alert variant="destructive" className="rounded-lg">

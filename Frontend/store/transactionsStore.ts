@@ -41,14 +41,14 @@ export interface TransactionsState {
   /** PATCH /transactions/mark-seen - Sekme açıldığında okundu işaretle. */
   markSeen: (getToken: () => string | null, tab: "INCOMING" | "IADE" | "RED") => Promise<void>;
 
-  /** Lokal güncelleme: Kabul işlemi sonrası tx güncelle, pendingForMeCount düşür. */
-  acceptTransactionLocally: (txId: string) => void;
+  /** Lokal güncelleme: Kabul işlemi sonrası yeni ACCEPTED tx ekle (zincir modeli). */
+  acceptTransactionLocally: (tx: { id: string; documentNumber: string; fromUserId?: string; toUserId?: string; fromUser?: unknown; toUser?: unknown; kind?: string }) => void;
 
-  /** Lokal güncelleme: Red işlemi sonrası tx güncelle, pendingForMeCount düşür. */
-  rejectTransactionLocally: (txId: string) => void;
+  /** Lokal güncelleme: Red işlemi sonrası yeni REJECTED tx ekle (zincir modeli). */
+  rejectTransactionLocally: (tx: { id: string; documentNumber: string; fromUserId?: string; toUserId?: string; fromUser?: unknown; toUser?: unknown; kind?: string }) => void;
 
-  /** Lokal güncelleme: İade işlemi sonrası tx güncelle. */
-  returnTransactionLocally: (txId: string) => void;
+  /** Lokal güncelleme: İade sonrası RETURNED + RETURN_REQUEST tx ekle (zincir modeli). */
+  returnTransactionLocally: (originalTx: { id: string; documentNumber: string; fromUserId?: string; toUserId?: string }, returnRequestTx: unknown) => void;
 
   /** Lokal güncelleme: Arşivleme sonrası evrak document bilgisini güncelle. */
   archiveTransactionLocally: (documentNumber: string) => void;
@@ -197,38 +197,64 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
     }
   },
 
-  acceptTransactionLocally: (txId: string) => {
+  acceptTransactionLocally: (tx) => {
     const { transactionsMe, meId } = get();
-    if (!Array.isArray(transactionsMe) || !meId) return;
-    const list = transactionsMe.map((t: unknown) => {
-      const x = t as { id?: string };
-      if (x.id !== txId) return t;
-      return Object.assign({}, t, { status: "ACCEPTED", isActiveForMe: true });
-    });
+    if (!Array.isArray(transactionsMe) || !meId || !tx.fromUserId || !tx.toUserId) return;
+    const newTx = {
+      id: `local-acc-${Date.now()}`,
+      documentNumber: tx.documentNumber,
+      fromUserId: tx.fromUserId,
+      toUserId: tx.toUserId,
+      fromUser: tx.fromUser,
+      toUser: tx.toUser,
+      status: "ACCEPTED" as const,
+      kind: tx.kind ?? "NORMAL",
+      isActiveForMe: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const list = [...transactionsMe, newTx];
     const pendingForMeCount = computePendingForMe(list, meId);
     set({ transactionsMe: list, pendingForMeCount });
   },
 
-  rejectTransactionLocally: (txId: string) => {
+  rejectTransactionLocally: (tx) => {
     const { transactionsMe, meId } = get();
-    if (!Array.isArray(transactionsMe) || !meId) return;
-    const list = transactionsMe.map((t: unknown) => {
-      const x = t as { id?: string };
-      if (x.id !== txId) return t;
-      return Object.assign({}, t, { status: "REJECTED" });
-    });
+    if (!Array.isArray(transactionsMe) || !meId || !tx.fromUserId || !tx.toUserId) return;
+    const newTx = {
+      id: `local-rej-${Date.now()}`,
+      documentNumber: tx.documentNumber,
+      fromUserId: tx.fromUserId,
+      toUserId: tx.toUserId,
+      fromUser: tx.fromUser,
+      toUser: tx.toUser,
+      status: "REJECTED" as const,
+      kind: tx.kind ?? "NORMAL",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const list = [...transactionsMe, newTx];
     const pendingForMeCount = computePendingForMe(list, meId);
     set({ transactionsMe: list, pendingForMeCount });
   },
 
-  returnTransactionLocally: (txId: string) => {
+  returnTransactionLocally: (originalTx, returnRequestTx) => {
     const { transactionsMe } = get();
-    if (!Array.isArray(transactionsMe)) return;
-    const list = transactionsMe.map((t: unknown) => {
-      const x = t as { id?: string };
-      if (x.id !== txId) return t;
-      return Object.assign({}, t, { status: "RETURNED", isActiveForMe: false });
-    });
+    if (!Array.isArray(transactionsMe) || !originalTx.fromUserId || !originalTx.toUserId) return;
+    const returnedTx = {
+      id: `local-ret-${Date.now()}`,
+      documentNumber: originalTx.documentNumber,
+      fromUserId: originalTx.toUserId,
+      toUserId: originalTx.fromUserId,
+      status: "RETURNED" as const,
+      kind: "NORMAL" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const toAdd = returnRequestTx && typeof returnRequestTx === "object"
+      ? [returnedTx, returnRequestTx]
+      : [returnedTx];
+    const list = [...transactionsMe, ...toAdd];
     set({ transactionsMe: list });
   },
 

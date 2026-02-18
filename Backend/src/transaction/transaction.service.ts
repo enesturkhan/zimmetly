@@ -101,26 +101,19 @@ export class TransactionService {
         });
       }
 
-      // 5) Aynı evrak için BEKLEYEN zimmet var mı?
-      const pending = await tx.transaction.findFirst({
-        where: {
-          documentNumber,
-          status: TransactionStatus.PENDING,
-        },
-        select: { id: true },
+      // 5) Aynı evrak için son durum: BEKLEYEN zimmet var mı?
+      const lastTx = await tx.transaction.findFirst({
+        where: { documentNumber },
+        orderBy: { createdAt: 'desc' },
       });
 
-      if (pending) {
+      if (lastTx?.status === TransactionStatus.PENDING) {
         throw new BadRequestException(
           'Bu evrak için zaten bekleyen bir zimmet var',
         );
       }
 
       // 6) Aynı kişiye ÜST ÜSTE zimmet engeli
-      const lastTx = await tx.transaction.findFirst({
-        where: { documentNumber },
-        orderBy: { createdAt: 'desc' },
-      });
 
       if (
         lastTx &&
@@ -321,8 +314,8 @@ export class TransactionService {
           (t) =>
             t.documentNumber === tx.documentNumber &&
             t.status === TransactionStatus.RETURNED &&
-            t.fromUserId === tx.toUserId &&
-            t.toUserId === tx.fromUserId,
+            t.fromUserId === tx.fromUserId &&
+            t.toUserId === tx.toUserId,
         );
         if (returnedTx) return returnNoteMap.get(returnedTx.id);
       }
@@ -415,6 +408,7 @@ export class TransactionService {
     type TimelineItem = {
       type: 'TRANSACTION';
       id: string;
+      kind: string;
       createdAt: string;
       fromUser?: { id: string; fullName: string; department: string | null };
       toUser?: { id: string; fullName: string; department: string | null };
@@ -447,10 +441,8 @@ export class TransactionService {
       }
     }
 
-    // Sadece TRANSACTION: RETURN_REQUEST eklenmez; RETURN/REJECT/ARCHIVE ayrı item üretilmez
-    const transactionItems: TimelineItem[] = transactions
-      .filter((tx) => tx.kind !== TransactionKind.RETURN_REQUEST)
-      .map((tx) => {
+    // Timeline = LOG: Sadece documentNumber ile tüm transaction'lar (RETURN_REQUEST dahil)
+    const transactionItems: TimelineItem[] = transactions.map((tx) => {
         const returnInfo =
           tx.status === TransactionStatus.RETURNED
             ? returnInfoMap.get(tx.id)
@@ -459,6 +451,7 @@ export class TransactionService {
         return {
           type: 'TRANSACTION',
           id: tx.id,
+          kind: tx.kind,
           createdAt: tx.createdAt.toISOString(),
           fromUser: tx.fromUser ?? undefined,
           toUser: tx.toUser ?? undefined,
@@ -480,7 +473,7 @@ export class TransactionService {
   }
 
   // =====================================================
-  // ACCEPT
+  // ACCEPT (Her aksiyon yeni kayıt - update YOK)
   // =====================================================
   async accept(id: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -492,9 +485,15 @@ export class TransactionService {
       if (t.toUserId !== userId)
         throw new ForbiddenException('Bu zimmet sana ait değil');
 
-      await tx.transaction.update({
-        where: { id },
-        data: { status: TransactionStatus.ACCEPTED },
+      // Yeni transaction oluştur (orijinali güncelleme)
+      await tx.transaction.create({
+        data: {
+          documentNumber: t.documentNumber,
+          fromUserId: t.fromUserId,
+          toUserId: t.toUserId,
+          status: TransactionStatus.ACCEPTED,
+          kind: t.kind,
+        },
       });
 
       await tx.document.update({
@@ -508,7 +507,7 @@ export class TransactionService {
   }
 
   // =====================================================
-  // REJECT
+  // REJECT (Her aksiyon yeni kayıt - update YOK)
   // =====================================================
   async reject(id: string, userId: string) {
     const t = await this.prisma.transaction.findUnique({ where: { id } });
@@ -518,33 +517,43 @@ export class TransactionService {
     if (t.toUserId !== userId)
       throw new ForbiddenException('Bu zimmet sana ait değil');
 
-    const updated = await this.prisma.transaction.update({
-      where: { id },
-      data: { status: TransactionStatus.REJECTED },
+    const created = await this.prisma.transaction.create({
+      data: {
+        documentNumber: t.documentNumber,
+        fromUserId: t.fromUserId,
+        toUserId: t.toUserId,
+        status: TransactionStatus.REJECTED,
+        kind: t.kind,
+      },
     });
     this.notificationsGateway.notifyUser(t.fromUserId);
-    return updated;
+    return created;
   }
 
   // =====================================================
-  // CANCEL (Gönderen geri çeker)
+  // CANCEL (Gönderen geri çeker - her aksiyon yeni kayıt)
   // =====================================================
   async cancel(id: string, userId: string) {
-    const tx = await this.prisma.transaction.findUnique({ where: { id } });
-    if (!tx) throw new NotFoundException('Zimmet bulunamadı');
-    if (tx.fromUserId !== userId)
+    const t = await this.prisma.transaction.findUnique({ where: { id } });
+    if (!t) throw new NotFoundException('Zimmet bulunamadı');
+    if (t.fromUserId !== userId)
       throw new ForbiddenException('Sadece gönderen iptal edebilir');
-    if (tx.status !== TransactionStatus.PENDING)
+    if (t.status !== TransactionStatus.PENDING)
       throw new BadRequestException('Kabul edilmiş zimmet iptal edilemez');
 
-    return this.prisma.transaction.update({
-      where: { id },
-      data: { status: TransactionStatus.CANCELLED },
+    return this.prisma.transaction.create({
+      data: {
+        documentNumber: t.documentNumber,
+        fromUserId: t.fromUserId,
+        toUserId: t.toUserId,
+        status: TransactionStatus.CANCELLED,
+        kind: t.kind,
+      },
     });
   }
 
   // =====================================================
-  // RETURN (İade)
+  // RETURN (İade - her aksiyon yeni kayıt, orijinali güncelleme)
   // =====================================================
   async returnBack(id: string, userId: string, dto: ReturnTransactionDto) {
     return this.prisma.$transaction(async (tx) => {
@@ -566,11 +575,18 @@ export class TransactionService {
         throw new BadRequestException('Arşivlenmiş evrak iade edilemez.');
       }
 
-      await tx.transaction.update({
-        where: { id },
-        data: { status: TransactionStatus.RETURNED },
+      // 1) İade eylemi kaydı (returner→receiver, RETURNED) - Timeline + İade Ettiklerim için
+      const returnedTx = await tx.transaction.create({
+        data: {
+          documentNumber: t.documentNumber,
+          fromUserId: t.toUserId,
+          toUserId: t.fromUserId,
+          status: TransactionStatus.RETURNED,
+          kind: TransactionKind.NORMAL,
+        },
       });
 
+      // 2) İade talebi (Ali'nin kabul etmesi için)
       const backTx = await tx.transaction.create({
         data: {
           documentNumber: t.documentNumber,
@@ -584,7 +600,7 @@ export class TransactionService {
       await tx.documentNote.create({
         data: {
           documentNumber: t.documentNumber,
-          transactionId: id,
+          transactionId: returnedTx.id,
           actionType: DocumentActionType.RETURN,
           note: dto.note,
           createdByUserId: userId,

@@ -97,6 +97,8 @@ model Transaction {
   toUserId       String
   status         TransactionStatus @default(PENDING)
   kind           TransactionKind   @default(NORMAL)
+  seenByToUser   Boolean           @default(false)
+  seenByFromUser Boolean           @default(false)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 

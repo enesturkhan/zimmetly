@@ -194,16 +194,42 @@ export class TransactionService {
   // LIST (Benim Geçmişim)
   // =====================================================
   async myList(userId: string) {
-    const transactions = await this.prisma.transaction.findMany({
-      where: {
-        OR: [{ fromUserId: userId }, { toUserId: userId }],
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        fromUser: { select: { id: true, fullName: true, department: true } },
-        toUser: { select: { id: true, fullName: true, department: true } },
-      },
-    });
+    const [transactions, unreadIncomingCount, unreadReturnedCount, unreadRejectedCount] =
+      await Promise.all([
+        this.prisma.transaction.findMany({
+          where: {
+            OR: [{ fromUserId: userId }, { toUserId: userId }],
+          },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            fromUser: { select: { id: true, fullName: true, department: true } },
+            toUser: { select: { id: true, fullName: true, department: true } },
+          },
+        }),
+        this.prisma.transaction.count({
+          where: {
+            toUserId: userId,
+            status: TransactionStatus.PENDING,
+            kind: { not: TransactionKind.RETURN_REQUEST },
+            seenByToUser: false,
+          },
+        }),
+        this.prisma.transaction.count({
+          where: {
+            toUserId: userId,
+            status: TransactionStatus.PENDING,
+            kind: TransactionKind.RETURN_REQUEST,
+            seenByToUser: false,
+          },
+        }),
+        this.prisma.transaction.count({
+          where: {
+            fromUserId: userId,
+            status: TransactionStatus.REJECTED,
+            seenByFromUser: false,
+          },
+        }),
+      ]);
 
     const txIds = transactions.map((tx) => tx.id);
     const documentNumbers = Array.from(
@@ -250,7 +276,17 @@ export class TransactionService {
     }
 
     if (documentNumbers.length === 0) {
-      return transactions;
+      return {
+        transactions: transactions.map((tx) => ({
+          ...tx,
+          note: undefined as string | undefined,
+          document: undefined as { status?: string } | undefined,
+          isActiveForMe: false,
+        })),
+        unreadIncomingCount,
+        unreadReturnedCount,
+        unreadRejectedCount,
+      };
     }
 
     const documents = documentNumbers.length
@@ -293,16 +329,55 @@ export class TransactionService {
       return undefined;
     };
 
-    return transactions.map((tx) => ({
+    const mapped = transactions.map((tx) => ({
       ...tx,
       note: getNoteForTx(tx),
       document: docMap.get(tx.documentNumber)
-        ? {
-          status: docMap.get(tx.documentNumber)?.status,
-        }
+        ? { status: docMap.get(tx.documentNumber)?.status }
         : undefined,
       isActiveForMe: isActiveForMe(tx),
     }));
+
+    return {
+      transactions: mapped,
+      unreadIncomingCount,
+      unreadReturnedCount,
+      unreadRejectedCount,
+    };
+  }
+
+  // =====================================================
+  // MARK SEEN (Okundu işaretle)
+  // =====================================================
+  async markSeen(userId: string, tab: 'INCOMING' | 'IADE' | 'RED') {
+    if (tab === 'INCOMING') {
+      await this.prisma.transaction.updateMany({
+        where: {
+          toUserId: userId,
+          status: TransactionStatus.PENDING,
+          kind: { not: TransactionKind.RETURN_REQUEST },
+        },
+        data: { seenByToUser: true },
+      });
+    } else if (tab === 'IADE') {
+      await this.prisma.transaction.updateMany({
+        where: {
+          toUserId: userId,
+          status: TransactionStatus.PENDING,
+          kind: TransactionKind.RETURN_REQUEST,
+        },
+        data: { seenByToUser: true },
+      });
+    } else if (tab === 'RED') {
+      await this.prisma.transaction.updateMany({
+        where: {
+          fromUserId: userId,
+          status: TransactionStatus.REJECTED,
+        },
+        data: { seenByFromUser: true },
+      });
+    }
+    return { message: 'Okundu işaretlendi' };
   }
 
   // =====================================================

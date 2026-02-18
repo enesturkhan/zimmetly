@@ -192,19 +192,28 @@ type TxForSummary = {
 
 /**
  * Geçmişim kartı: İkonlu mini özet (Yeni Zimmet / İade / Red)
- * transactionsMe üzerinden client-side sayılar hesaplanır.
- * Her badge tıklanabilir → /gecmisim?tab=... ile ilgili sekmeye gider.
- * Okunmamış durum flag'leri ile görsel vurgulama yapılır.
+ * Backend'ten gelen unread count ile görsel vurgulama (kalıcı).
+ * Her badge tıklanabilir → /gecmisim?tab=... ile ilgili sekmeye gider + markSeen çağrılır.
  */
 function IncomingSummaryBadge({
   transactions,
   isLoading,
   meId,
+  unreadIncomingCount,
+  unreadReturnedCount,
+  unreadRejectedCount,
+  getToken,
+  markSeen,
   onNavigate,
 }: {
   transactions: TxForSummary[];
   isLoading: boolean;
   meId: string | undefined;
+  unreadIncomingCount: number;
+  unreadReturnedCount: number;
+  unreadRejectedCount: number;
+  getToken: () => string | null;
+  markSeen: (getToken: () => string | null, tab: "INCOMING" | "IADE" | "RED") => Promise<void>;
   onNavigate?: (tab: string) => void;
 }) {
   const list = Array.isArray(transactions) ? transactions : [];
@@ -223,7 +232,6 @@ function IncomingSummaryBadge({
       (t.toUserId === meId || t.toUser?.id === meId)
   ).length;
 
-  // Bana red edilen: fromUserId === me (benim gönderdiğim reddedildi). toUserId === me = benim reddettiklerim = SAYILMAZ
   const rejectedIncomingCount = list.filter(
     (t) =>
       t.status === "REJECTED" &&
@@ -231,37 +239,10 @@ function IncomingSummaryBadge({
       t.document?.status !== "ARCHIVED"
   ).length;
 
-  // Okunmamış durum flag'leri - sadece gerçek yeni veri geldiğinde true olur
-  const [hasUnreadIncoming, setHasUnreadIncoming] = useState(false);
-  const [hasUnreadReturned, setHasUnreadReturned] = useState(false);
-  const [hasUnreadRejected, setHasUnreadRejected] = useState(false);
-
-  // Previous count'ları tutmak için useRef kullan (state değil)
-  const prevIncomingCountRef = useRef(normalIncomingCount);
-  const prevReturnedCountRef = useRef(returnIncomingCount);
-  const prevRejectedCountRef = useRef(rejectedIncomingCount);
-
-  // Count artışını tespit et - sadece gerçek yeni veri geldiğinde flag'i true yap
-  useEffect(() => {
-    if (normalIncomingCount > prevIncomingCountRef.current) {
-      setHasUnreadIncoming(true);
-    }
-    prevIncomingCountRef.current = normalIncomingCount;
-  }, [normalIncomingCount]);
-
-  useEffect(() => {
-    if (returnIncomingCount > prevReturnedCountRef.current) {
-      setHasUnreadReturned(true);
-    }
-    prevReturnedCountRef.current = returnIncomingCount;
-  }, [returnIncomingCount]);
-
-  useEffect(() => {
-    if (rejectedIncomingCount > prevRejectedCountRef.current) {
-      setHasUnreadRejected(true);
-    }
-    prevRejectedCountRef.current = rejectedIncomingCount;
-  }, [rejectedIncomingCount]);
+  const handleNavigate = (tab: "INCOMING" | "IADE" | "RED") => {
+    markSeen(getToken, tab);
+    onNavigate?.(tab);
+  };
 
   const hasAny = normalIncomingCount > 0 || returnIncomingCount > 0 || rejectedIncomingCount > 0;
 
@@ -294,32 +275,38 @@ function IncomingSummaryBadge({
         {normalIncomingCount > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setHasUnreadIncoming(false);
-                  onNavigate?.("INCOMING");
+                  handleNavigate("INCOMING");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleNavigate("INCOMING");
+                  }
                 }}
                 className={cn(
                   "flex cursor-pointer items-center gap-1 text-xs transition-transform hover:scale-105",
-                  hasUnreadIncoming
+                  unreadIncomingCount > 0
                     ? "text-destructive"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Inbox className={cn("h-3.5 w-3.5", hasUnreadIncoming && "text-destructive")} />
-                {hasUnreadIncoming ? (
-                  <Badge
-                    variant="destructive"
-                    className="h-4 min-w-4 px-1 text-[10px] font-medium animate-pulse"
+                <Inbox className={cn("h-3.5 w-3.5", unreadIncomingCount > 0 && "text-destructive")} />
+                {unreadIncomingCount > 0 ? (
+                  <span
+                    className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border-0 bg-destructive px-1 text-[10px] font-medium text-white animate-pulse"
                   >
                     {normalIncomingCount}
-                  </Badge>
+                  </span>
                 ) : (
                   <span>{normalIncomingCount}</span>
                 )}
-              </button>
+              </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
               Yeni Zimmetler
@@ -329,32 +316,38 @@ function IncomingSummaryBadge({
         {returnIncomingCount > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setHasUnreadReturned(false);
-                  onNavigate?.("IADE");
+                  handleNavigate("IADE");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleNavigate("IADE");
+                  }
                 }}
                 className={cn(
                   "flex cursor-pointer items-center gap-1 text-xs transition-transform hover:scale-105",
-                  hasUnreadReturned
+                  unreadReturnedCount > 0
                     ? "text-destructive"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <RotateCcw className={cn("h-3.5 w-3.5", hasUnreadReturned && "text-destructive")} />
-                {hasUnreadReturned ? (
-                  <Badge
-                    variant="destructive"
-                    className="h-4 min-w-4 px-1 text-[10px] font-medium animate-pulse"
+                <RotateCcw className={cn("h-3.5 w-3.5", unreadReturnedCount > 0 && "text-destructive")} />
+                {unreadReturnedCount > 0 ? (
+                  <span
+                    className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border-0 bg-destructive px-1 text-[10px] font-medium text-white animate-pulse"
                   >
                     {returnIncomingCount}
-                  </Badge>
+                  </span>
                 ) : (
                   <span>{returnIncomingCount}</span>
                 )}
-              </button>
+              </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
               İade Gelenler
@@ -364,32 +357,38 @@ function IncomingSummaryBadge({
         {rejectedIncomingCount > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setHasUnreadRejected(false);
-                  onNavigate?.("RED");
+                  handleNavigate("RED");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleNavigate("RED");
+                  }
                 }}
                 className={cn(
                   "flex cursor-pointer items-center gap-1 text-xs transition-transform hover:scale-105",
-                  hasUnreadRejected
+                  unreadRejectedCount > 0
                     ? "text-destructive"
                     : "text-muted-foreground hover:text-destructive"
                 )}
               >
-                <XCircle className={cn("h-3.5 w-3.5", hasUnreadRejected && "text-destructive")} />
-                {hasUnreadRejected ? (
-                  <Badge
-                    variant="destructive"
-                    className="h-4 min-w-4 px-1 text-[10px] font-medium animate-pulse"
+                <XCircle className={cn("h-3.5 w-3.5", unreadRejectedCount > 0 && "text-destructive")} />
+                {unreadRejectedCount > 0 ? (
+                  <span
+                    className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border-0 bg-destructive px-1 text-[10px] font-medium text-white animate-pulse"
                   >
                     {rejectedIncomingCount}
-                  </Badge>
+                  </span>
                 ) : (
                   <span>{rejectedIncomingCount}</span>
                 )}
-              </button>
+              </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
               Red Gelenler
@@ -474,9 +473,16 @@ function QuickActionCard({
   badge,
 }: QuickActionCardProps) {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="group relative flex cursor-pointer flex-col items-start rounded-xl border bg-card p-5 text-left shadow-sm transition-all hover:bg-muted/40 hover:shadow-sm"
     >
       {badge}
@@ -485,7 +491,7 @@ function QuickActionCard({
       </div>
       <h3 className="text-lg font-semibold text-foreground">{title}</h3>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </button>
+    </div>
   );
 }
 
@@ -532,13 +538,20 @@ function EvrakSonucCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-medium">
           Evrak No:{" "}
-          <button
-            type="button"
+          <span
+            role="button"
+            tabIndex={0}
             onClick={onOpenTimeline}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenTimeline();
+              }
+            }}
             className="cursor-pointer underline-offset-2 transition-colors hover:underline hover:bg-muted/50 rounded px-1 -mx-1"
           >
             {docResult.number}
-          </button>
+          </span>
         </p>
         {docResult.lastHolder && docResult.status !== "ARCHIVED" && (
           <Badge>
@@ -664,6 +677,10 @@ export default function DashboardPage() {
   const getToken = useAuthStore((s: AuthState) => s.getToken);
   const transactionsMe = useTransactionsStore((s) => s.transactionsMe);
   const isPendingCountLoading = useTransactionsStore((s) => s.isPendingCountLoading);
+  const unreadIncomingCount = useTransactionsStore((s) => s.unreadIncomingCount);
+  const unreadReturnedCount = useTransactionsStore((s) => s.unreadReturnedCount);
+  const unreadRejectedCount = useTransactionsStore((s) => s.unreadRejectedCount);
+  const markSeen = useTransactionsStore((s) => s.markSeen);
   const refresh = useTransactionsStore((s) => s.refresh);
 
   const [user, setUser] = useState<UserMe | null>(null);
@@ -998,6 +1015,11 @@ export default function DashboardPage() {
                 transactions={(transactionsMe || []) as TxForSummary[]}
                 isLoading={isPendingCountLoading}
                 meId={user?.id}
+                unreadIncomingCount={unreadIncomingCount}
+                unreadReturnedCount={unreadReturnedCount}
+                unreadRejectedCount={unreadRejectedCount}
+                getToken={getToken}
+                markSeen={markSeen}
                 onNavigate={(tab) => router.push(`/gecmisim?tab=${tab}`)}
               />
             }

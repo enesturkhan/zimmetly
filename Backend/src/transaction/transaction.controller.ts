@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { TransactionService } from "./transaction.service";
 import { SupabaseAuthGuard } from "../auth/guards/supabase.guard";
 import { CreateTransactionDto } from "./dto/create-transaction.dto";
@@ -17,6 +17,11 @@ export class TransactionController {
   @Get("me")
   myList(@Req() req: any) {
     return this.service.myList(req.user.id);
+  }
+
+  @Patch("mark-seen")
+  markSeen(@Query("tab") tab: "INCOMING" | "IADE" | "RED", @Req() req: any) {
+    return this.service.markSeen(req.user.id, tab);
   }
 
   @Get("document/:number")

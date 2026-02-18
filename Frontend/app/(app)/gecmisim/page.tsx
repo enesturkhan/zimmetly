@@ -142,6 +142,7 @@ export default function GecmisimPage() {
   const returnTransactionLocally = useTransactionsStore((s) => s.returnTransactionLocally);
   const archiveTransactionLocally = useTransactionsStore((s) => s.archiveTransactionLocally);
   const addTransactionLocally = useTransactionsStore((s) => s.addTransactionLocally);
+  const markSeen = useTransactionsStore((s) => s.markSeen);
 
   const [me, setMe] = useState<Me | null>(null);
   // Local state for instant UI updates (synced with store)
@@ -188,6 +189,13 @@ export default function GecmisimPage() {
     const mapped = TAB_PARAM_MAP[tabParam.toUpperCase()];
     if (mapped) setActiveTab(mapped);
   }, [searchParams]);
+
+  // Sekmeye girildiğinde backend'e okundu işaretle
+  useEffect(() => {
+    if (activeTab === "incoming") markSeen(getToken, "INCOMING");
+    else if (activeTab === "returned") markSeen(getToken, "IADE");
+    else if (activeTab === "rejected") markSeen(getToken, "RED");
+  }, [activeTab, getToken, markSeen]);
 
   /* ================= FLIP + FEEDBACK ================= */
   const pendingFlipRef = useRef<Record<string, number> | null>(null);
@@ -774,16 +782,24 @@ export default function GecmisimPage() {
                 )}
                 <span>
                   Evrak No:{" "}
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation();
                       openTimelineModal(docCard.documentNumber);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openTimelineModal(docCard.documentNumber);
+                      }
+                    }}
                     className="cursor-pointer underline-offset-2 transition-colors hover:underline text-left text-primary"
                   >
                     {docCard.documentNumber}
-                  </button>
+                  </span>
                 </span>
               </p>
               <div className="text-xs text-muted-foreground mb-2">

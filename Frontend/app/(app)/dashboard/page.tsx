@@ -194,6 +194,7 @@ type TxForSummary = {
  * Geçmişim kartı: İkonlu mini özet (Yeni Zimmet / İade / Red)
  * transactionsMe üzerinden client-side sayılar hesaplanır.
  * Her badge tıklanabilir → /gecmisim?tab=... ile ilgili sekmeye gider.
+ * Okunmamış durum flag'leri ile görsel vurgulama yapılır.
  */
 function IncomingSummaryBadge({
   transactions,
@@ -230,6 +231,38 @@ function IncomingSummaryBadge({
       t.document?.status !== "ARCHIVED"
   ).length;
 
+  // Okunmamış durum flag'leri - sadece gerçek yeni veri geldiğinde true olur
+  const [hasUnreadIncoming, setHasUnreadIncoming] = useState(false);
+  const [hasUnreadReturned, setHasUnreadReturned] = useState(false);
+  const [hasUnreadRejected, setHasUnreadRejected] = useState(false);
+
+  // Previous count'ları tutmak için useRef kullan (state değil)
+  const prevIncomingCountRef = useRef(normalIncomingCount);
+  const prevReturnedCountRef = useRef(returnIncomingCount);
+  const prevRejectedCountRef = useRef(rejectedIncomingCount);
+
+  // Count artışını tespit et - sadece gerçek yeni veri geldiğinde flag'i true yap
+  useEffect(() => {
+    if (normalIncomingCount > prevIncomingCountRef.current) {
+      setHasUnreadIncoming(true);
+    }
+    prevIncomingCountRef.current = normalIncomingCount;
+  }, [normalIncomingCount]);
+
+  useEffect(() => {
+    if (returnIncomingCount > prevReturnedCountRef.current) {
+      setHasUnreadReturned(true);
+    }
+    prevReturnedCountRef.current = returnIncomingCount;
+  }, [returnIncomingCount]);
+
+  useEffect(() => {
+    if (rejectedIncomingCount > prevRejectedCountRef.current) {
+      setHasUnreadRejected(true);
+    }
+    prevRejectedCountRef.current = rejectedIncomingCount;
+  }, [rejectedIncomingCount]);
+
   const hasAny = normalIncomingCount > 0 || returnIncomingCount > 0 || rejectedIncomingCount > 0;
 
   if (isLoading) {
@@ -265,12 +298,27 @@ function IncomingSummaryBadge({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setHasUnreadIncoming(false);
                   onNavigate?.("INCOMING");
                 }}
-                className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-transform hover:scale-105 hover:text-foreground"
+                className={cn(
+                  "flex cursor-pointer items-center gap-1 text-xs transition-transform hover:scale-105",
+                  hasUnreadIncoming
+                    ? "text-destructive"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
               >
-                <Inbox className="h-3.5 w-3.5" />
-                <span>{normalIncomingCount}</span>
+                <Inbox className={cn("h-3.5 w-3.5", hasUnreadIncoming && "text-destructive")} />
+                {hasUnreadIncoming ? (
+                  <Badge
+                    variant="destructive"
+                    className="h-4 min-w-4 px-1 text-[10px] font-medium animate-pulse"
+                  >
+                    {normalIncomingCount}
+                  </Badge>
+                ) : (
+                  <span>{normalIncomingCount}</span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
@@ -285,12 +333,27 @@ function IncomingSummaryBadge({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setHasUnreadReturned(false);
                   onNavigate?.("IADE");
                 }}
-                className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-transform hover:scale-105 hover:text-foreground"
+                className={cn(
+                  "flex cursor-pointer items-center gap-1 text-xs transition-transform hover:scale-105",
+                  hasUnreadReturned
+                    ? "text-destructive"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
               >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>{returnIncomingCount}</span>
+                <RotateCcw className={cn("h-3.5 w-3.5", hasUnreadReturned && "text-destructive")} />
+                {hasUnreadReturned ? (
+                  <Badge
+                    variant="destructive"
+                    className="h-4 min-w-4 px-1 text-[10px] font-medium animate-pulse"
+                  >
+                    {returnIncomingCount}
+                  </Badge>
+                ) : (
+                  <span>{returnIncomingCount}</span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
@@ -305,12 +368,27 @@ function IncomingSummaryBadge({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setHasUnreadRejected(false);
                   onNavigate?.("RED");
                 }}
-                className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-transform hover:scale-105 hover:text-destructive"
+                className={cn(
+                  "flex cursor-pointer items-center gap-1 text-xs transition-transform hover:scale-105",
+                  hasUnreadRejected
+                    ? "text-destructive"
+                    : "text-muted-foreground hover:text-destructive"
+                )}
               >
-                <XCircle className="h-3.5 w-3.5" />
-                <span>{rejectedIncomingCount}</span>
+                <XCircle className={cn("h-3.5 w-3.5", hasUnreadRejected && "text-destructive")} />
+                {hasUnreadRejected ? (
+                  <Badge
+                    variant="destructive"
+                    className="h-4 min-w-4 px-1 text-[10px] font-medium animate-pulse"
+                  >
+                    {rejectedIncomingCount}
+                  </Badge>
+                ) : (
+                  <span>{rejectedIncomingCount}</span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
@@ -635,7 +713,7 @@ export default function DashboardPage() {
         return r.json();
       })
       .then((u) => (u && setUser(u)))
-      .catch(() => {});
+      .catch(() => { });
   }, [getToken, router]);
 
   /* ================= USERS ================= */

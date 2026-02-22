@@ -11,7 +11,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTransactionsStore } from "@/store/transactionsStore";
 import { type AuthState } from "@/store/authStore";
 
-import { Search, Send, History, FileText, Loader2, FileX, Inbox, RotateCcw, XCircle } from "lucide-react";
+import { Search, Send, History, FileText, Loader2, FileX, Inbox, RotateCcw, XCircle, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toUserFriendlyError, getNetworkError } from "@/lib/errorMessages";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -667,6 +667,7 @@ export default function DashboardPage() {
   const refresh = useTransactionsStore((s) => s.refresh);
 
   const [user, setUser] = useState<UserMe | null>(null);
+  const [activeAssignmentsCount, setActiveAssignmentsCount] = useState<number | null>(null);
 
   const [docNumber, setDocNumber] = useState("");
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
@@ -726,6 +727,21 @@ export default function DashboardPage() {
       .then((u) => (u && setUser(u)))
       .catch(() => { });
   }, [getToken, router]);
+
+  /* ================= ACTIVE ASSIGNMENTS (ADMIN) ================= */
+
+  useEffect(() => {
+    if (!user || user.role !== "ADMIN") return;
+    const token = getToken();
+    if (!token) return;
+
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/reports/active-assignments`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setActiveAssignmentsCount(Array.isArray(data) ? data.length : 0))
+      .catch(() => setActiveAssignmentsCount(0));
+  }, [user, getToken]);
 
   /* ================= USERS ================= */
 
@@ -1031,6 +1047,18 @@ export default function DashboardPage() {
               />
             }
           />
+          {user?.role === "ADMIN" && (
+            <QuickActionCard
+              icon={<ClipboardList className="h-5 w-5" />}
+              title="Aktif Zimmetler"
+              description={
+                activeAssignmentsCount !== null
+                  ? `${activeAssignmentsCount} aktif zimmet`
+                  : "Raporu görüntüle"
+              }
+              onClick={() => router.push("/admin/reports/active")}
+            />
+          )}
         </section>
 
         <EvrakSorguCard

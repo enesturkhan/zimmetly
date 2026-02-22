@@ -209,10 +209,9 @@ export class TransactionService {
         }),
         this.prisma.transaction.count({
           where: {
-            toUserId: userId,
-            status: TransactionStatus.PENDING,
-            kind: TransactionKind.RETURN_REQUEST,
-            seenByToUser: false,
+            status: TransactionStatus.RETURNED,
+            fromUserId: userId,
+            seenByFromUser: false,
           },
         }),
         this.prisma.transaction.count({
@@ -307,19 +306,7 @@ export class TransactionService {
     const getNoteForTx = (tx: (typeof transactions)[0]) => {
       const sendNote = sendNoteMap.get(tx.id);
       if (sendNote) return sendNote;
-      const returnNote = returnNoteMap.get(tx.id);
-      if (returnNote) return returnNote;
-      if (tx.kind === TransactionKind.RETURN_REQUEST) {
-        const returnedTx = transactions.find(
-          (t) =>
-            t.documentNumber === tx.documentNumber &&
-            t.status === TransactionStatus.RETURNED &&
-            t.fromUserId === tx.fromUserId &&
-            t.toUserId === tx.toUserId,
-        );
-        if (returnedTx) return returnNoteMap.get(returnedTx.id);
-      }
-      return undefined;
+      return returnNoteMap.get(tx.id);
     };
 
     const mapped = transactions.map((tx) => ({
@@ -355,11 +342,10 @@ export class TransactionService {
     } else if (tab === 'IADE') {
       await this.prisma.transaction.updateMany({
         where: {
-          toUserId: userId,
-          status: TransactionStatus.PENDING,
-          kind: TransactionKind.RETURN_REQUEST,
+          status: TransactionStatus.RETURNED,
+          fromUserId: userId,
         },
-        data: { seenByToUser: true },
+        data: { seenByFromUser: true },
       });
     } else if (tab === 'RED') {
       await this.prisma.transaction.updateMany({
@@ -441,8 +427,10 @@ export class TransactionService {
       }
     }
 
-    // Timeline = LOG: Sadece documentNumber ile tüm transaction'lar (RETURN_REQUEST dahil)
-    const transactionItems: TimelineItem[] = transactions.map((tx) => {
+    // Timeline: documentNumber ile tüm transaction'lar, RETURN_REQUEST hariç (redundant kart yok)
+    const transactionItems: TimelineItem[] = transactions
+      .filter((tx) => tx.kind !== TransactionKind.RETURN_REQUEST)
+      .map((tx) => {
         const returnInfo =
           tx.status === TransactionStatus.RETURNED
             ? returnInfoMap.get(tx.id)
@@ -473,7 +461,7 @@ export class TransactionService {
   }
 
   // =====================================================
-  // ACCEPT (Her aksiyon yeni kayıt - update YOK)
+  // ACCEPT - update + seen işaretle
   // =====================================================
   async accept(id: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -485,14 +473,11 @@ export class TransactionService {
       if (t.toUserId !== userId)
         throw new ForbiddenException('Bu zimmet sana ait değil');
 
-      // Yeni transaction oluştur (orijinali güncelleme)
-      await tx.transaction.create({
+      await tx.transaction.update({
+        where: { id },
         data: {
-          documentNumber: t.documentNumber,
-          fromUserId: t.fromUserId,
-          toUserId: t.toUserId,
           status: TransactionStatus.ACCEPTED,
-          kind: t.kind,
+          seenByToUser: true,
         },
       });
 
@@ -507,7 +492,7 @@ export class TransactionService {
   }
 
   // =====================================================
-  // REJECT (Her aksiyon yeni kayıt - update YOK)
+  // REJECT - update + seen işaretle
   // =====================================================
   async reject(id: string, userId: string) {
     const t = await this.prisma.transaction.findUnique({ where: { id } });
@@ -517,21 +502,19 @@ export class TransactionService {
     if (t.toUserId !== userId)
       throw new ForbiddenException('Bu zimmet sana ait değil');
 
-    const created = await this.prisma.transaction.create({
+    const updated = await this.prisma.transaction.update({
+      where: { id },
       data: {
-        documentNumber: t.documentNumber,
-        fromUserId: t.fromUserId,
-        toUserId: t.toUserId,
         status: TransactionStatus.REJECTED,
-        kind: t.kind,
+        seenByToUser: true,
       },
     });
     this.notificationsGateway.notifyUser(t.fromUserId);
-    return created;
+    return updated;
   }
 
   // =====================================================
-  // CANCEL (Gönderen geri çeker - her aksiyon yeni kayıt)
+  // CANCEL (Gönderen geri çeker)
   // =====================================================
   async cancel(id: string, userId: string) {
     const t = await this.prisma.transaction.findUnique({ where: { id } });
@@ -541,19 +524,14 @@ export class TransactionService {
     if (t.status !== TransactionStatus.PENDING)
       throw new BadRequestException('Kabul edilmiş zimmet iptal edilemez');
 
-    return this.prisma.transaction.create({
-      data: {
-        documentNumber: t.documentNumber,
-        fromUserId: t.fromUserId,
-        toUserId: t.toUserId,
-        status: TransactionStatus.CANCELLED,
-        kind: t.kind,
-      },
+    return this.prisma.transaction.update({
+      where: { id },
+      data: { status: TransactionStatus.CANCELLED },
     });
   }
 
   // =====================================================
-  // RETURN (İade - her aksiyon yeni kayıt, orijinali güncelleme)
+  // RETURN - ACCEPTED → RETURNED (terminal state, update)
   // =====================================================
   async returnBack(id: string, userId: string, dto: ReturnTransactionDto) {
     return this.prisma.$transaction(async (tx) => {
@@ -575,32 +553,23 @@ export class TransactionService {
         throw new BadRequestException('Arşivlenmiş evrak iade edilemez.');
       }
 
-      // 1) İade eylemi kaydı (returner→receiver, RETURNED) - Timeline + İade Ettiklerim için
-      const returnedTx = await tx.transaction.create({
+      await tx.transaction.update({
+        where: { id },
         data: {
-          documentNumber: t.documentNumber,
-          fromUserId: t.toUserId,
-          toUserId: t.fromUserId,
           status: TransactionStatus.RETURNED,
-          kind: TransactionKind.NORMAL,
+          seenByToUser: true,
         },
       });
 
-      // 2) İade talebi (Ali'nin kabul etmesi için)
-      const backTx = await tx.transaction.create({
-        data: {
-          documentNumber: t.documentNumber,
-          fromUserId: t.toUserId,
-          toUserId: t.fromUserId,
-          status: TransactionStatus.PENDING,
-          kind: TransactionKind.RETURN_REQUEST,
-        },
+      await tx.document.update({
+        where: { number: t.documentNumber },
+        data: { currentHolderId: t.fromUserId },
       });
 
       await tx.documentNote.create({
         data: {
           documentNumber: t.documentNumber,
-          transactionId: returnedTx.id,
+          transactionId: id,
           actionType: DocumentActionType.RETURN,
           note: dto.note,
           createdByUserId: userId,
@@ -608,7 +577,7 @@ export class TransactionService {
       });
 
       this.notificationsGateway.notifyUser(t.fromUserId);
-      return { message: 'İade talebi oluşturuldu', data: backTx };
+      return { message: 'İade edildi' };
     });
   }
 }

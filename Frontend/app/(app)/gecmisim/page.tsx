@@ -143,6 +143,7 @@ export default function GecmisimPage() {
   const archiveTransactionLocally = useTransactionsStore((s) => s.archiveTransactionLocally);
   const addTransactionLocally = useTransactionsStore((s) => s.addTransactionLocally);
   const refresh = useTransactionsStore((s) => s.refresh);
+  const refreshSilent = useTransactionsStore((s) => s.refreshSilent);
   const markSeen = useTransactionsStore((s) => s.markSeen);
   const unreadIncomingCount = useTransactionsStore((s) => s.unreadIncomingCount);
   const unreadReturnedCount = useTransactionsStore((s) => s.unreadReturnedCount);
@@ -160,7 +161,6 @@ export default function GecmisimPage() {
 
   const items = localTransactions;
   const [error, setError] = useState("");
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [archiveTx, setArchiveTx] = useState<TxItem | null>(null);
   const [archiveNote, setArchiveNote] = useState("");
   const [archiveError, setArchiveError] = useState("");
@@ -185,6 +185,7 @@ export default function GecmisimPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("incoming");
   const [activeReturnSubTab, setActiveReturnSubTab] = useState<ReturnSubTab>("toMe");
   const [activeRejectSubTab, setActiveRejectSubTab] = useState<RejectSubTab>("toMe");
+  const [transitioningTxId, setTransitioningTxId] = useState<string | null>(null);
 
   // URL ?tab=... → ilgili sekme ilk yüklemede aktif
   useEffect(() => {
@@ -350,25 +351,19 @@ export default function GecmisimPage() {
     [allDocCards, me]
   );
 
-  // 4️⃣ İade: "Bana İade Edilenler" = returnBack ile oluşan PENDING iade talepleri (kind=RETURN_REQUEST)
+  // 4️⃣ İade: RETURN terminal state. Bana İade Edilenler = RETURNED, fromUserId=me
   const returnedToMeDocs = useMemo(
     () =>
       allDocCards.filter(
-        (d) =>
-          d.lastTx.status === "PENDING" &&
-          d.lastTx.toUserId === me?.id &&
-          d.lastTx.kind === "RETURN_REQUEST"
+        (d) => d.lastTx.status === "RETURNED" && d.lastTx.fromUserId === me?.id
       ),
     [allDocCards, me]
   );
-  
-  // İade Ettiklerim: history'de RETURNED tx var ve fromUserId=me (ben iade ettim)
+  // İade Ettiklerim = RETURNED, toUserId=me
   const returnedByMeDocs = useMemo(
     () =>
-      allDocCards.filter((d) =>
-        d.history.some(
-          (tx) => tx.status === "RETURNED" && tx.fromUserId === me?.id
-        )
+      allDocCards.filter(
+        (d) => d.lastTx.status === "RETURNED" && d.lastTx.toUserId === me?.id
       ),
     [allDocCards, me]
   );
@@ -379,25 +374,18 @@ export default function GecmisimPage() {
     [returnedToMeDocs, returnedByMeDocs]
   );
 
-  // 5️⃣ Red: REJECTED tx'de from=gönderen, to=reddeden. Fatih→Ali, Ali red → from=Fatih, to=Ali
-  // Bana Red Edilenler: history'de REJECTED var ve fromUserId=me
-  // Reddettiklerim: history'de REJECTED var ve toUserId=me
+  // 5️⃣ Red: REJECTED. Bana Red Edilenler = fromUserId=me, Reddettiklerim = toUserId=me
   const rejectedToMeDocs = useMemo(
     () =>
-      allDocCards.filter((d) =>
-        d.history.some(
-          (tx) => tx.status === "REJECTED" && tx.fromUserId === me?.id
-        )
+      allDocCards.filter(
+        (d) => d.lastTx.status === "REJECTED" && d.lastTx.fromUserId === me?.id
       ),
     [allDocCards, me]
   );
-
   const rejectedByMeDocs = useMemo(
     () =>
-      allDocCards.filter((d) =>
-        d.history.some(
-          (tx) => tx.status === "REJECTED" && tx.toUserId === me?.id
-        )
+      allDocCards.filter(
+        (d) => d.lastTx.status === "REJECTED" && d.lastTx.toUserId === me?.id
       ),
     [allDocCards, me]
   );
@@ -492,31 +480,38 @@ export default function GecmisimPage() {
   /* ================= ACTION ================= */
 
   const runAction = async (tx: TxItem, type: "accept" | "reject" | "return") => {
-    setActionLoading(tx.id);
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/transactions/${tx.id}/${type}`;
+    setTransitioningTxId(tx.id);
+    if (type === "accept") acceptTransactionLocally(tx.id);
+    else if (type === "reject") rejectTransactionLocally(tx.id);
+    else returnTransactionLocally(tx.id);
+    setFeedbackCard({ docNumber: tx.documentNumber, type: type === "return" ? "return" : type });
 
-    try {
-      const res = await fetch(url, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${getToken()}` },
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/transactions/${tx.id}/${type}`;
+    fetch(url, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message ?? "Hata");
+      })
+      .catch((e: any) => setError(toUserFriendlyError(e?.message)))
+      .finally(() => {
+        if (me?.id) refreshSilent(getToken, me.id);
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      
-      capturePositions();
-      
-      // Store'a yeni tx ekle (zincir modeli - her aksiyon ayrı kayıt)
-      if (type === "accept") acceptTransactionLocally(tx);
-      else if (type === "reject") rejectTransactionLocally(tx);
-      else returnTransactionLocally(tx, data?.data);
-      
-      setFeedbackCard({ docNumber: tx.documentNumber, type: type === "return" ? "return" : type });
-      if (me?.id) refresh(getToken, me.id, "action");
-    } catch (e: any) {
-      setError(toUserFriendlyError(e?.message));
-    } finally {
-      setActionLoading(null);
-    }
+
+    setTimeout(() => {
+      if (type === "accept") {
+        setActiveTab("accepted");
+      } else if (type === "reject") {
+        setActiveTab("rejected");
+        setActiveRejectSubTab("byMe");
+      } else {
+        setActiveTab("returned");
+        setActiveReturnSubTab("byMe");
+      }
+      setTransitioningTxId(null);
+    }, 200);
   };
 
   /* ================= UI ================= */
@@ -627,7 +622,7 @@ export default function GecmisimPage() {
     }
   };
 
-  const handleReturnConfirm = async () => {
+  const handleReturnConfirm = () => {
     if (!returnTx) return;
     const note = returnNote.trim();
     if (!note) {
@@ -638,36 +633,37 @@ export default function GecmisimPage() {
     if (!token) return;
 
     setReturnError("");
-    setReturnLoading(true);
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/transactions/${returnTx.id}/return`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ note }),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      
-      capturePositions();
-      
-      // Store'a RETURNED + RETURN_REQUEST ekle (zincir modeli)
-      returnTransactionLocally(returnTx, data?.data);
-      
-      setFeedbackCard({ docNumber: returnTx.documentNumber, type: "return" });
-      if (me?.id) refresh(getToken, me.id, "action");
-      setReturnTx(null);
-      setReturnNote("");
-    } catch (e: any) {
-      setReturnError(e.message || "İade işlemi başarısız");
-    } finally {
-      setReturnLoading(false);
-    }
+    setTransitioningTxId(returnTx.id);
+    returnTransactionLocally(returnTx.id);
+    setFeedbackCard({ docNumber: returnTx.documentNumber, type: "return" });
+    setReturnTx(null);
+    setReturnNote("");
+
+    fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/transactions/${returnTx.id}/return`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ note }),
+      }
+    )
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message ?? "Hata");
+      })
+      .catch((e: any) => setReturnError(e?.message || "İade işlemi başarısız"))
+      .finally(() => {
+        if (me?.id) refreshSilent(getToken, me.id);
+      });
+
+    setTimeout(() => {
+      setActiveTab("returned");
+      setActiveReturnSubTab("byMe");
+      setTransitioningTxId(null);
+    }, 200);
   };
 
   /* ================= COMPONENTS ================= */
@@ -679,14 +675,18 @@ export default function GecmisimPage() {
     const loadingTimeline = loadingTimelineDoc === docCard.documentNumber;
     const isArchived = isArchivedCard(tx);
     const showFeedback = feedbackCard?.docNumber === docCard.documentNumber;
+    const isTransitioning = tx.id === transitioningTxId;
 
     return (
       <div
         key={docCard.documentNumber}
         data-doc-card={docCard.documentNumber}
         className={cn(
-          "relative rounded-lg border overflow-hidden transition-all hover:bg-muted/40 hover:shadow-sm transform-gpu",
-          isArchived && "bg-amber-50/40 border-amber-200/50"
+          "relative rounded-lg border overflow-hidden transition-all duration-200 hover:bg-muted/40 hover:shadow-sm transform-gpu",
+          isArchived && "bg-amber-50/40 border-amber-200/50",
+          isTransitioning
+            ? "opacity-0 translate-y-1 pointer-events-none"
+            : "opacity-100 translate-y-0"
         )}
       >
         {showFeedback && (
@@ -858,7 +858,7 @@ export default function GecmisimPage() {
     // Bana Gelen sekmesi
     if (activeTab === "incoming") {
       if (archived) return null;
-      const loading = actionLoading === tx.id;
+      const loading = transitioningTxId === tx.id;
       return (
         <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
           <Button
@@ -961,37 +961,7 @@ export default function GecmisimPage() {
       );
     }
 
-    // Bana İade Edilenler: PENDING return talepleri → Kabul / Red (Bana Gelen ile aynı)
-    if (activeTab === "returned" && activeReturnSubTab === "toMe") {
-      if (tx.status === "PENDING" && tx.kind === "RETURN_REQUEST") {
-        const loading = actionLoading === tx.id;
-        return (
-          <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
-            <Button
-              size="sm"
-              className="cursor-pointer min-w-[7.5rem]"
-              onClick={() => runAction(tx, "accept")}
-              disabled={loading}
-              tabIndex={loading ? -1 : 0}
-              aria-label="İade talebini kabul et"
-            >
-              {loading ? "Kabul ediliyor…" : "Kabul"}
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="cursor-pointer min-w-[5rem]"
-              onClick={() => runAction(tx, "reject")}
-              disabled={loading}
-              tabIndex={loading ? -1 : 0}
-              aria-label="İade talebini reddet"
-            >
-              {loading ? "Reddediliyor…" : "Red"}
-            </Button>
-          </div>
-        );
-      }
-    }
+    // Bana İade Edilenler: RETURNED terminal state - buton yok
 
     // Red sekmelerinde evrak kullanıcıdaysa: Modal ile Zimmetle + Arşivle
     if (activeTab === "rejected" && activeRejectSubTab === "toMe") {

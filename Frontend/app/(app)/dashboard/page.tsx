@@ -218,19 +218,9 @@ function IncomingSummaryBadge({
       (t.toUserId === meId || t.toUser?.id === meId)
   ).length;
 
-  const returnIncomingCount = list.filter(
-    (t) =>
-      t.status === "PENDING" &&
-      t.kind === "RETURN_REQUEST" &&
-      (t.toUserId === meId || t.toUser?.id === meId)
-  ).length;
+  const returnIncomingCount = unreadReturnedCount;
 
-  const rejectedIncomingCount = list.filter(
-    (t) =>
-      t.status === "REJECTED" &&
-      (t.fromUserId === meId || t.fromUser?.id === meId) &&
-      t.document?.status !== "ARCHIVED"
-  ).length;
+  const rejectedIncomingCount = unreadRejectedCount;
 
   const handleNavigate = (tab: "INCOMING" | "IADE" | "RED") => {
     markSeen(getToken, tab);

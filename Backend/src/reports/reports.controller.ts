@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { SupabaseAuthGuard } from '../auth/guards/supabase.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -8,8 +8,14 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
+  @Get('active-summary')
+  getActiveSummary() {
+    return this.reportsService.getActiveSummary();
+  }
+
   @Get('active-assignments')
-  getActiveAssignments() {
-    return this.reportsService.getActiveAssignments();
+  getActiveAssignments(@Query('filter') filter?: string) {
+    const f = filter === 'OVERDUE' ? 'OVERDUE' : 'ALL';
+    return this.reportsService.getActiveAssignments(f);
   }
 }

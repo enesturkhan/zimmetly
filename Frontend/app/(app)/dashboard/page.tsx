@@ -443,7 +443,7 @@ function PendingCountBadge({ count }: { count: number }) {
 type QuickActionCardProps = {
   icon: React.ReactNode;
   title: string;
-  description: string;
+  description: React.ReactNode;
   onClick: () => void;
   badge?: React.ReactNode;
 };
@@ -473,7 +473,7 @@ function QuickActionCard({
         {icon}
       </div>
       <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <div className="mt-1 text-sm text-muted-foreground">{description}</div>
     </div>
   );
 }
@@ -667,7 +667,10 @@ export default function DashboardPage() {
   const refresh = useTransactionsStore((s) => s.refresh);
 
   const [user, setUser] = useState<UserMe | null>(null);
-  const [activeAssignmentsCount, setActiveAssignmentsCount] = useState<number | null>(null);
+  const [activeSummary, setActiveSummary] = useState<{
+    activeCount: number;
+    overdueCount: number;
+  } | null>(null);
 
   const [docNumber, setDocNumber] = useState("");
   const [docResult, setDocResult] = useState<DocumentResponse | null>(null);
@@ -728,19 +731,23 @@ export default function DashboardPage() {
       .catch(() => { });
   }, [getToken, router]);
 
-  /* ================= ACTIVE ASSIGNMENTS (ADMIN) ================= */
+  /* ================= ACTIVE SUMMARY (ADMIN) ================= */
 
   useEffect(() => {
     if (!user || user.role !== "ADMIN") return;
     const token = getToken();
     if (!token) return;
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/reports/active-assignments`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/reports/active-summary`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setActiveAssignmentsCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => setActiveAssignmentsCount(0));
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) =>
+        data && typeof data.activeCount === "number" && typeof data.overdueCount === "number"
+          ? setActiveSummary({ activeCount: data.activeCount, overdueCount: data.overdueCount })
+          : setActiveSummary(null)
+      )
+      .catch(() => setActiveSummary(null));
   }, [user, getToken]);
 
   /* ================= USERS ================= */
@@ -1052,9 +1059,36 @@ export default function DashboardPage() {
               icon={<ClipboardList className="h-5 w-5" />}
               title="Aktif Zimmetler"
               description={
-                activeAssignmentsCount !== null
-                  ? `${activeAssignmentsCount} aktif zimmet`
-                  : "Raporu görüntüle"
+                <div className="space-y-0.5">
+                  <div>
+                    {activeSummary !== null
+                      ? `${activeSummary.activeCount} aktif zimmet`
+                      : "Raporu görüntüle"}
+                  </div>
+                  {activeSummary != null && activeSummary.overdueCount > 0 && (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push("/admin/reports/active?tab=OVERDUE");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          router.push("/admin/reports/active?tab=OVERDUE");
+                        }
+                      }}
+                      className={cn(
+                        "text-red-600 cursor-pointer hover:underline inline-flex items-center gap-1",
+                        "animate-pulse"
+                      )}
+                    >
+                      {activeSummary.overdueCount} geciken
+                    </div>
+                  )}
+                </div>
               }
               onClick={() => router.push("/admin/reports/active")}
             />

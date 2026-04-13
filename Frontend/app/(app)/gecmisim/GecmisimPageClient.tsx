@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactionsStore } from "@/store/transactionsStore";
@@ -130,7 +130,7 @@ const TAB_PARAM_MAP: Record<string, TabKey> = {
   SENT: "sent",
 };
 
-export default function GecmisimPageContent() {
+function GecmisimPageWithSearchParams() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const getToken = useAuthStore((s: any) => s.getToken);
@@ -1540,5 +1540,22 @@ export default function GecmisimPageContent() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function GecmisimSuspenseFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
+      <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
+      <p className="mt-4 text-sm text-muted-foreground">Yükleniyor…</p>
+    </div>
+  );
+}
+
+export default function GecmisimPageClient() {
+  return (
+    <Suspense fallback={<GecmisimSuspenseFallback />}>
+      <GecmisimPageWithSearchParams />
+    </Suspense>
   );
 }

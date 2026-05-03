@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import GecmisimPageClient from "./GecmisimPageClient";
 
+export const dynamic = "force-dynamic";
+
 function GecmisimPageFallback() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">

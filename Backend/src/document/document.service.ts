@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { DocumentActionType, DocumentStatus, TransactionStatus } from '@prisma/client';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { ArchiveDocumentDto } from './dto/archive-document.dto';

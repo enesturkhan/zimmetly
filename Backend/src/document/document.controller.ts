@@ -11,7 +11,7 @@ import {
 import { DocumentService } from './document.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { ArchiveDocumentDto } from './dto/archive-document.dto';
-import { SupabaseAuthGuard } from 'src/auth/guards/supabase.guard';
+import { SupabaseAuthGuard } from '../auth/guards/supabase.guard';
 
 @Controller('documents')
 @UseGuards(SupabaseAuthGuard) // tüm document endpoint'leri login gerektirsin

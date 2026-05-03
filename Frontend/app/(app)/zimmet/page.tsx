@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, KeyboardEvent } from "react";
+import { Suspense, useEffect, useRef, useState, KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useTransactionsStore } from "@/store/transactionsStore";
@@ -17,7 +17,7 @@ type UserOption = {
   department: string | null;
 };
 
-export default function ZimmetDetailPage() {
+function ZimmetComponent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const getToken = useAuthStore((s) => s.getToken);
@@ -373,5 +373,13 @@ export default function ZimmetDetailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ZimmetPage() {
+  return (
+    <Suspense fallback={<div>Yükleniyor...</div>}>
+      <ZimmetComponent />
+    </Suspense>
   );
 }

@@ -17,8 +17,16 @@ async function bootstrap() {
     }),
   );
 
+  // FRONTEND_URL: prod/preview için https://proje.vercel.app (birden fazlaysa virgülle ayır)
+  const corsOrigins: string[] = ['http://localhost:3000'];
+  if (process.env.FRONTEND_URL?.trim()) {
+    corsOrigins.push(
+      ...process.env.FRONTEND_URL.split(',').map((o) => o.trim()).filter(Boolean),
+    );
+  }
+
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: corsOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

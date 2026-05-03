@@ -26,7 +26,13 @@ async function bootstrap() {
   }
 
   app.enableCors({
-    origin: corsOrigins,
+    origin: [
+
+      "http://localhost:3000",
+
+      "https://zimmetly.vercel.app",
+
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

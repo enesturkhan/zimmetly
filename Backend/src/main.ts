@@ -27,13 +27,12 @@ async function bootstrap() {
 
   app.enableCors({
     origin: [
-
       "http://localhost:3000",
-
       "https://zimmetly.vercel.app",
-
+      "https://zimmetly-git-main-enestrkhan213-gmailcoms-projects.vercel.app",
     ],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });
 

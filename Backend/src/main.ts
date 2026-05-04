@@ -31,7 +31,7 @@ async function bootstrap() {
       "https://zimmetly.vercel.app",
       "https://zimmetly-git-main-enestrkhan213-gmailcoms-projects.vercel.app",
     ],
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    methods: ['GET,POST,PATCH,DELETE,OPTIONS'],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });

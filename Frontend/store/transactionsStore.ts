@@ -38,6 +38,9 @@ export interface TransactionsState {
   /** Arka planda sessiz yenileme - loading flag'leri değiştirmez. */
   refreshSilent: (getToken: () => string | null, meId: string) => Promise<void>;
 
+  /** Sadece okunmamış sayaçlar — GET /transactions/me/summary (hafif). */
+  refreshSummarySilent: (getToken: () => string | null) => Promise<void>;
+
   /** Logout / token yok. */
   clear: () => void;
 
@@ -184,6 +187,30 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
         unreadIncomingCount,
         unreadReturnedCount,
         unreadRejectedCount,
+      });
+    } catch {
+      // silent fail
+    }
+  },
+
+  refreshSummarySilent: async (getToken) => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/transactions/me/summary`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) return;
+      set({
+        unreadIncomingCount:
+          typeof data?.unreadIncomingCount === "number" ? data.unreadIncomingCount : 0,
+        unreadReturnedCount:
+          typeof data?.unreadReturnedCount === "number" ? data.unreadReturnedCount : 0,
+        unreadRejectedCount:
+          typeof data?.unreadRejectedCount === "number" ? data.unreadRejectedCount : 0,
       });
     } catch {
       // silent fail

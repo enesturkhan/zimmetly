@@ -14,6 +14,11 @@ export class TransactionController {
     return this.service.create(dto, req.user.id);
   }
 
+  @Get("me/summary")
+  mySummary(@Req() req: any) {
+    return this.service.mySummary(req.user.id);
+  }
+
   @Get("me")
   myList(@Req() req: any) {
     return this.service.myList(req.user.id);

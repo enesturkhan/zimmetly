@@ -184,6 +184,38 @@ export class TransactionService {
   }
 
   // =====================================================
+  // SUMMARY (unread counts only — lightweight polling)
+  // =====================================================
+  async mySummary(userId: string) {
+    const [unreadIncomingCount, unreadReturnedCount, unreadRejectedCount] =
+      await Promise.all([
+        this.prisma.transaction.count({
+          where: {
+            toUserId: userId,
+            status: TransactionStatus.PENDING,
+            kind: { not: TransactionKind.RETURN_REQUEST },
+            seenByToUser: false,
+          },
+        }),
+        this.prisma.transaction.count({
+          where: {
+            status: TransactionStatus.RETURNED,
+            fromUserId: userId,
+            seenByFromUser: false,
+          },
+        }),
+        this.prisma.transaction.count({
+          where: {
+            fromUserId: userId,
+            status: TransactionStatus.REJECTED,
+            seenByFromUser: false,
+          },
+        }),
+      ]);
+    return { unreadIncomingCount, unreadReturnedCount, unreadRejectedCount };
+  }
+
+  // =====================================================
   // LIST (Benim Geçmişim)
   // =====================================================
   async myList(userId: string) {

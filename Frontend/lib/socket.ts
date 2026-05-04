@@ -2,7 +2,17 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
-export function connectSocket(token: string): Socket {
+/** Production default: socket kapalı. Sadece NEXT_PUBLIC_ENABLE_SOCKET === "true" iken bağlanır. */
+export function isSocketEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_ENABLE_SOCKET === "true";
+}
+
+export function connectSocket(token: string): Socket | null {
+  if (!isSocketEnabled()) {
+    disconnectSocket();
+    return null;
+  }
+
   if (socket?.connected) return socket;
   if (socket) socket.disconnect();
 

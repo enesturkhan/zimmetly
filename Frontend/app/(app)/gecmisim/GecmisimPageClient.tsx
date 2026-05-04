@@ -277,6 +277,16 @@ function GecmisimPageWithSearchParams() {
       .catch(() => {});
   }, [getToken, router]);
 
+  useEffect(() => {
+    if (!me?.id) return;
+    void refreshSilent(getToken, me.id);
+    const intervalId = setInterval(() => {
+      if (document.hidden) return;
+      void refreshSilent(getToken, me.id);
+    }, 30000);
+    return () => clearInterval(intervalId);
+  }, [me?.id, getToken, refreshSilent]);
+
   /* ================= DATA ================= */
 
   useEffect(() => {

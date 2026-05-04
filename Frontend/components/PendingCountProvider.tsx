@@ -7,9 +7,9 @@ import { useTransactionsStore } from "@/store/transactionsStore";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 
 /**
- * Tek yer: GET /transactions/me burada çağrılır.
- * Token + me varsa fetch yapar, store güncellenir.
- * WebSocket: push sinyal → refresh(polling) ile badge anında güncellenir.
+ * İlk yükleme: GET /transactions/me (tam liste + sayaçlar).
+ * Arka plan: 30 sn'de bir GET /transactions/me/summary (sadece badge sayaçları), sekme gizliyken çalışmaz.
+ * Socket: yalnızca NEXT_PUBLIC_ENABLE_SOCKET === "true" iken; sinyalde refreshSilent (tam liste).
  */
 export function PendingCountProvider({
   children,
@@ -20,6 +20,8 @@ export function PendingCountProvider({
   const token = useAuthStore((s) => s.token);
   const getToken = useAuthStore((s) => s.getToken);
   const refresh = useTransactionsStore((s) => s.refresh);
+  const refreshSilent = useTransactionsStore((s) => s.refreshSilent);
+  const refreshSummarySilent = useTransactionsStore((s) => s.refreshSummarySilent);
   const clear = useTransactionsStore((s) => s.clear);
   const [me, setMe] = useState<{ id: string } | null>(null);
 
@@ -49,21 +51,29 @@ export function PendingCountProvider({
   useEffect(() => {
     if (!token || !me?.id) return;
 
-    refresh(getToken, me.id, "action");
+    void refresh(getToken, me.id, "action");
 
     const socket = connectSocket(getToken() ?? "");
     const eventName = `user:${me.id}`;
-    socket.on(eventName, () => {
-      refresh(getToken, me.id, "polling");
-    });
+    if (socket) {
+      socket.on(eventName, () => {
+        void refreshSilent(getToken, me.id);
+      });
+    }
 
-    const id = setInterval(() => refresh(getToken, me!.id, "polling"), 30000);
+    const intervalId = setInterval(() => {
+      if (document.hidden) return;
+      void refreshSummarySilent(getToken);
+    }, 30000);
 
     return () => {
-      socket.off(eventName);
-      clearInterval(id);
+      if (socket) {
+        socket.off(eventName);
+      }
+      disconnectSocket();
+      clearInterval(intervalId);
     };
-  }, [token, me?.id, getToken, refresh]);
+  }, [token, me?.id, getToken, refresh, refreshSilent, refreshSummarySilent]);
 
   return <>{children}</>;
 }

@@ -665,6 +665,7 @@ export default function DashboardPage() {
   const unreadRejectedCount = useTransactionsStore((s) => s.unreadRejectedCount);
   const markSeen = useTransactionsStore((s) => s.markSeen);
   const refresh = useTransactionsStore((s) => s.refresh);
+  const refreshSilent = useTransactionsStore((s) => s.refreshSilent);
 
   const [user, setUser] = useState<UserMe | null>(null);
   const [activeSummary, setActiveSummary] = useState<{
@@ -730,6 +731,18 @@ export default function DashboardPage() {
       .then((u) => (u && setUser(u)))
       .catch(() => { });
   }, [getToken, router]);
+
+  /* ================= TRANSACTIONS POLLING (Geçmişim verisi + özet) ================= */
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void refreshSilent(getToken, user.id);
+    const intervalId = setInterval(() => {
+      if (document.hidden) return;
+      void refreshSilent(getToken, user.id);
+    }, 30000);
+    return () => clearInterval(intervalId);
+  }, [user?.id, getToken, refreshSilent]);
 
   /* ================= ACTIVE SUMMARY (ADMIN) ================= */
 
